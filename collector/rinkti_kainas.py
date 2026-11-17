@@ -425,20 +425,41 @@ def tikslinis(plan: dict, origins: list[str], ry: "Ryanair | None", wz: "Wizz | 
             run_jobs(wz._job, wz_jobs, workers=2, label="Wizz sekami")
 
 
-def oro_uostai(ry: "Ryanair | None", wz: "Wizz | None") -> list[dict]:
-    """Visi Ryanair ir Wizz oro uostai — krypties pasirinkimui programėlėje."""
+def oro_uostai(ry: "Ryanair | None", wz: "Wizz | None", origins: list[str]) -> list[dict]:
+    """Visi Ryanair ir Wizz oro uostai krypčių langui programėlėje:
+    k — kodas, n — pavadinimas, c — šalis, w — šilta kryptis, a — avialinijos,
+    d — iš kurių išvykimo oro uostų skrendama tiesiogiai."""
     out: dict[str, dict] = {}
+    def add(code, name, country, al):
+        e = out.setdefault(code, {"k": code, "n": name.strip(), "c": (country or "").strip(),
+                                  "w": int(is_warm(code, country or "")), "a": [], "d": []})
+        if al not in e["a"]:
+            e["a"].append(al)
+        return e
     if ry:
         d = get_json(ry.s, "GET", "https://www.ryanair.com/api/views/locate/5/airports/en/active", log=False)
         for a in d if isinstance(d, list) else []:
-            code, country = a["code"], a["country"]["name"]
-            out[code] = {"k": code, "n": a["name"].strip(), "c": country, "w": int(is_warm(code, country))}
+            add(a["code"], a["name"], a["country"]["name"], "FR")
+        for o in origins:
+            r = get_json(ry.s, "GET", Ryanair.ROUTES + o, log=False)
+            for x in r if isinstance(r, list) else []:
+                a = x["arrivalAirport"]
+                e = add(a["code"], a.get("name", a["code"]), a["country"]["name"], "FR")
+                if o not in e["d"]:
+                    e["d"].append(o)
     if wz:
         for code, c in wz.cities.items():
-            if code not in out and c.get("connections") and "All Airports" not in (c.get("shortName") or ""):
-                country = (c.get("countryName") or "").strip()
-                out[code] = {"k": code, "n": (c.get("shortName") or code).strip(), "c": country,
-                             "w": int(is_warm(code, country))}
+            if c.get("connections") and "All Airports" not in (c.get("shortName") or ""):
+                add(code, c.get("shortName") or code, c.get("countryName"), "W6")
+        for o in origins:
+            if o in WIZZ_SKIP:
+                continue
+            for c in wz.cities.get(o, {}).get("connections", []):
+                e = out.get(c["iata"])
+                if e is not None and o not in e["d"]:
+                    e["d"].append(o)
+    for o in origins:
+        out.pop(o, None)
     return sorted(out.values(), key=lambda x: (x["c"], x["n"]))
 
 
@@ -451,6 +472,7 @@ def main() -> None:
                     help="persėdimo miestai, iš kurių renkamos kainos į visas kryptis (plačiai paieškai)")
     ap.add_argument("--plan", type=Path, help="tikslinė paieška: JSON su targets, start, end, tracked")
     ap.add_argument("--oro-uostai", type=Path, help="kur įrašyti visų oro uostų sąrašą")
+    ap.add_argument("--tik-oro-uostai", action="store_true", help="tik atnaujinti oro uostų sąrašą (be kainų)")
     ap.add_argument("--be-ryanair", action="store_true")
     ap.add_argument("--be-wizz", action="store_true")
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT, help="kur įrašyti JSON")
@@ -472,7 +494,9 @@ def main() -> None:
     ry = None if args.be_ryanair else Ryanair(start, end)
     wz = None if args.be_wizz else Wizz(start, end)
 
-    if plan:
+    if args.tik_oro_uostai:
+        pass
+    elif plan:
         tikslinis(plan, origins, ry, wz)
     else:
         # 1. Tiesioginiai skrydžiai iš (ir atgal į) išvykimo oro uostus
@@ -493,9 +517,12 @@ def main() -> None:
 
     if args.oro_uostai:
         args.oro_uostai.parent.mkdir(parents=True, exist_ok=True)
-        args.oro_uostai.write_text(json.dumps(oro_uostai(ry, wz), ensure_ascii=False, separators=(",", ":")),
+        args.oro_uostai.write_text(json.dumps(oro_uostai(ry, wz, origins), ensure_ascii=False, separators=(",", ":")),
                                    encoding="utf-8")
 
+    if args.tik_oro_uostai:
+        print(f"Oro uostų sąrašas atnaujintas → {args.oro_uostai}")
+        return
     data = {
         "generated": dt.datetime.now().isoformat(timespec="minutes"),
         "start": str(start), "end": str(end), "origins": origins,

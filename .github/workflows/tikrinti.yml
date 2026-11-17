@@ -87,6 +87,8 @@ jobs:
             python collector/rinkti_kainas.py --out build/kainos.json --oro-uostai data/oro_uostai.json
           elif [ -f build/plan.json ]; then
             python collector/rinkti_kainas.py --plan build/plan.json --out build/kainos.json --oro-uostai data/oro_uostai.json
+          else
+            python collector/rinkti_kainas.py --tik-oro-uostai --oro-uostai data/oro_uostai.json
           fi
 
       - name: Įvertinti ir pranešti
