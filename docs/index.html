@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pigūs skrydžiai</title>
-<meta name="theme-color" content="#2a78d6">
+<meta name="theme-color" content="#1663c7">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Skrydžiai">
 <link rel="manifest" href="manifest.webmanifest">
@@ -13,9 +13,10 @@
 <style>
 :root {
   color-scheme: light;
-  --bg: #f6f6f4; --surface: #fcfcfb; --surface-2: #f0efec; --border: #e3e2de;
-  --text: #0b0b0b; --text-2: #52514e; --muted: #8a8984; --accent: #2a78d6; --accent-ink: #fff;
-  --bar: #2a78d6; --bar-dim: #cde2fb; --grid-line: #ecebe7; --sel: #eb6834; --danger: #d03b3b;
+  --bg: #f2f6fc; --surface: #ffffff; --surface-2: #eaf1fb; --border: #dbe5f2;
+  --text: #0f1b2d; --text-2: #4a5a70; --muted: #8494a8; --accent: #1a6fd8; --accent-ink: #fff;
+  --bar: #2a78d6; --bar-dim: #d6e6fb; --grid-line: #e8eef7; --sel: #eb6834; --danger: #d03b3b;
+  --top-bg: linear-gradient(135deg, #1663c7, #2a86ef); --top-ink: #ffffff;
   --h0: #cde2fb; --h1: #9ec5f4; --h2: #6da7ec; --h3: #3987e5; --h4: #256abf; --h5: #184f95;
   --ink-light: #0b0b0b; --ink-dark: #ffffff;
   --nav-h: 60px;
@@ -23,18 +24,20 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #121211; --surface: #1a1a19; --surface-2: #242422; --border: #33332f; --text: #f0efec;
-    --text-2: #c3c2b7; --muted: #8d8c85; --accent: #3987e5; --bar: #3987e5; --bar-dim: #1c3d66;
-    --grid-line: #2a2a27; --sel: #d95926; --danger: #e66767;
+    --bg: #0e1420; --surface: #161e2c; --surface-2: #1f2a3b; --border: #2a374b; --text: #eef3fa;
+    --text-2: #b6c2d3; --muted: #7d8ba0; --accent: #3d8ff0; --bar: #3987e5; --bar-dim: #1c3d66;
+    --grid-line: #233044; --sel: #d95926; --danger: #e66767;
+    --top-bg: linear-gradient(135deg, #0f3a73, #1a5bb0); --top-ink: #ffffff;
     --h0: #0d366b; --h1: #184f95; --h2: #1c5cab; --h3: #2a78d6; --h4: #5598e7; --h5: #86b6ef;
     --ink-light: #f0efec; --ink-dark: #0b0b0b;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #121211; --surface: #1a1a19; --surface-2: #242422; --border: #33332f; --text: #f0efec;
-  --text-2: #c3c2b7; --muted: #8d8c85; --accent: #3987e5; --bar: #3987e5; --bar-dim: #1c3d66;
-  --grid-line: #2a2a27; --sel: #d95926; --danger: #e66767;
+  --bg: #0e1420; --surface: #161e2c; --surface-2: #1f2a3b; --border: #2a374b; --text: #eef3fa;
+  --text-2: #b6c2d3; --muted: #7d8ba0; --accent: #3d8ff0; --bar: #3987e5; --bar-dim: #1c3d66;
+  --grid-line: #233044; --sel: #d95926; --danger: #e66767;
+  --top-bg: linear-gradient(135deg, #0f3a73, #1a5bb0); --top-ink: #ffffff;
   --h0: #0d366b; --h1: #184f95; --h2: #1c5cab; --h3: #2a78d6; --h4: #5598e7; --h5: #86b6ef;
   --ink-light: #f0efec; --ink-dark: #0b0b0b;
 }
@@ -47,10 +50,17 @@ button, input, select { font: inherit; color: inherit; }
 .wrap { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
 
 /* viršutinė juosta */
-.top { position: sticky; top: 0; z-index: 10; background: var(--bg); border-bottom: 1px solid var(--border);
-  padding-top: env(safe-area-inset-top); }
-.top-in { display: flex; gap: 8px; align-items: center; padding: 10px 0; flex-wrap: wrap; }
-.top h1 { font-size: 18px; margin: 0 auto 0 0; white-space: nowrap; }
+.top { position: sticky; top: 0; z-index: 10; background: var(--top-bg); color: var(--top-ink);
+  padding-top: env(safe-area-inset-top); box-shadow: 0 2px 10px rgba(16, 60, 130, .18); }
+.top-in { display: flex; gap: 8px; align-items: center; padding: 12px 0 10px; flex-wrap: wrap; }
+.top h1 { font-size: 20px; margin: 0 auto 0 0; white-space: nowrap; letter-spacing: .2px; }
+.top h1::before { content: "✈ "; }
+.top .sel, .top .inp, .top .btn { border-color: transparent; background: #fff; color: #0f1b2d; }
+.top .inp::placeholder { color: #6b7b90; }
+.top .seg { border-color: rgba(255,255,255,.35); background: rgba(255,255,255,.14); }
+.top .seg button { color: #fff; }
+.top .seg button.on { background: #fff; color: #1663c7; font-weight: 600; }
+.top .btn .cnt { background: #1663c7; }
 .sel, .inp { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px;
   min-height: 40px; }
 .sel { max-width: 46vw; }
@@ -69,11 +79,12 @@ a.btn { text-decoration: none; color: var(--text); display: inline-flex; align-i
 
 /* sąrašas */
 .summary { color: var(--text-2); margin: 10px 0; font-size: 13px; }
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 12px; overflow: hidden; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; margin-bottom: 12px; overflow: hidden;
+  box-shadow: 0 1px 3px rgba(16, 60, 130, .06); }
 .card-h { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; padding: 12px 14px 4px; }
 .dest { font-weight: 600; font-size: 17px; }
 .dest small { font-weight: 400; color: var(--text-2); font-size: 13px; }
-.price { margin-left: auto; font-weight: 700; font-size: 19px; font-variant-numeric: tabular-nums; }
+.price { margin-left: auto; font-weight: 700; font-size: 20px; font-variant-numeric: tabular-nums; color: var(--accent); }
 .price small { font-weight: 400; color: var(--text-2); font-size: 12px; }
 .best { width: 100%; color: var(--text-2); font-size: 13px; }
 .tag { display: inline-block; font-size: 11px; border: 1px solid var(--border); border-radius: 6px; padding: 0 6px;
@@ -153,8 +164,10 @@ a.btn { text-decoration: none; color: var(--text); display: inline-flex; align-i
 code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-size: 13px; word-break: break-all; }
 
 /* prisijungimas */
-.login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
-.login .box { width: 100%; max-width: 360px; }
+.login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--top-bg); }
+.login .box { width: 100%; max-width: 360px; box-shadow: 0 10px 30px rgba(10, 40, 90, .25); border: 0; padding: 22px; }
+.login h3 { font-size: 22px; color: var(--accent); }
+.login h3::before { content: "✈ "; }
 .login .inp { width: 100%; margin: 10px 0; }
 .login .btn { width: 100%; }
 dialog { border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text);
