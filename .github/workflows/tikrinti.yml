@@ -1,0 +1,95 @@
+name: Kainų tikrinimas
+
+on:
+  schedule:
+    - cron: "0 6,18 * * *"   # ~8:00 ir ~20:00 Lietuvos žiemos laiku (vasarą 9:00 ir 21:00)
+  workflow_dispatch:
+    inputs:
+      rinkti:
+        description: "Surinkti naujas kainas (~25 min)"
+        type: boolean
+        default: true
+  push:
+    branches: [main]          # išsaugojus paiešką programėlėje — iškart patikrinti su esamomis kainomis
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: tikrinti
+  cancel-in-progress: false
+
+env:
+  APP_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+
+jobs:
+  tikrinti:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Ar rinkti naujas kainas?
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.rinkti }}" = "true" ]; then
+            echo "collect=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "collect=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.mode.outputs.collect == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Rinkti kainas
+        if: steps.mode.outputs.collect == 'true'
+        run: |
+          pip install --quiet requests
+          python collector/rinkti_kainas.py --out build/kainos.json
+
+      - name: Užšifruoti ir tikrinti paieškas (naujos kainos)
+        if: steps.mode.outputs.collect == 'true'
+        env:
+          SLAPTAZODIS: ${{ secrets.SLAPTAZODIS }}
+        run: node collector/tikrinti.mjs --data build/kainos.json
+
+      - name: Tikrinti paieškas (esamos kainos)
+        if: steps.mode.outputs.collect != 'true'
+        env:
+          SLAPTAZODIS: ${{ secrets.SLAPTAZODIS }}
+        run: |
+          if curl -fsSL "${APP_URL}data.enc" -o docs/data.enc; then
+            node collector/tikrinti.mjs --data-enc docs/data.enc
+          else
+            echo "Kainų dar nėra — paleisk eigą rankiniu būdu su 'Surinkti naujas kainas'."
+            rm -f docs/data.enc
+          fi
+
+      - name: Išsaugoti pranešimų būseną
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/
+          if ! git diff --cached --quiet; then
+            git commit -m "Pranešimų būsena"
+            git pull --rebase
+            git push
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deploy
+        uses: actions/deploy-pages@v4
