@@ -80,7 +80,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add state/
+          git add -A state
           if ! git diff --cached --quiet; then
             git commit -m "Pranešimų būsena"
             git pull --rebase
