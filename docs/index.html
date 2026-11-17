@@ -178,6 +178,28 @@ dialog .inp { width: 100%; }
   background: var(--text); color: var(--surface); padding: 10px 16px; border-radius: 10px; z-index: 60; font-size: 14px;
   max-width: calc(100vw - 32px); }
 </style>
+<style>
+/* paieška kryptimi */
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px; margin: 12px 0;
+  box-shadow: 0 1px 3px rgba(16, 60, 130, .06); }
+.panel .fld:first-child { margin-top: 0; }
+.ac { position: relative; }
+.ac .inp { width: 100%; }
+.ac-list { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 15; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 24px rgba(10, 40, 90, .15); max-height: 50vh; overflow-y: auto; }
+.ac-list button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 10px 12px; cursor: pointer; }
+.ac-list button:hover, .ac-list button:focus { background: var(--surface-2); }
+.ac-list small { color: var(--muted); }
+.chip .x { margin-left: 6px; opacity: .8; }
+.status { display: flex; gap: 12px; align-items: center; background: var(--surface-2); border-radius: 12px; padding: 12px; margin: 12px 0; font-size: 14px; }
+.spin { width: 22px; height: 22px; border: 3px solid var(--bar-dim); border-top-color: var(--accent); border-radius: 50%; animation: sp 1s linear infinite; flex: none; }
+@keyframes sp { to { transform: rotate(360deg); } }
+.wide { width: 100%; }
+.recent button { display: block; width: 100%; text-align: left; border: 0; border-top: 1px solid var(--border); background: transparent;
+  padding: 10px 2px; cursor: pointer; }
+.recent button:first-child { border-top: 0; }
+.recent small { color: var(--muted); }
+</style>
 </head>
 <body>
 
@@ -199,24 +221,45 @@ dialog .inp { width: 100%; }
     <div class="top"><div class="wrap">
       <div class="top-in">
         <h1>Skrydžiai</h1>
-        <select class="sel" id="origin" aria-label="Išvykimas"></select>
-        <div class="seg" id="mode"><button data-v="rt">Į abi puses</button><button data-v="ow">Į vieną</button></div>
+        <div class="seg" id="view"><button data-v="dir">Kryptimi</button><button data-v="all">Visur</button></div>
       </div>
       <div class="row2">
-        <input class="inp" type="search" id="q" placeholder="Kryptis: miestas, šalis">
+        <div class="seg" id="mode"><button data-v="rt">Į abi puses</button><button data-v="ow">Į vieną</button></div>
         <button class="btn" id="openFilters">Filtrai<span class="cnt hidden" id="fcnt"></span></button>
-        <button class="btn" id="saveBtn" title="Išsaugoti paiešką">☆</button>
+        <button class="btn" id="saveBtn" title="Išsaugoti">☆</button>
       </div>
     </div></div>
     <div class="wrap">
+      <!-- Kryptimi -->
+      <div id="dirPanel" class="panel">
+        <div class="fld"><span class="lab">Kur skrendi?</span>
+          <div class="ac"><input class="inp" id="destQ" placeholder="Miestas, oro uostas ar šalis" autocomplete="off">
+            <div class="ac-list hidden" id="destList"></div></div>
+          <div class="chips" id="targets" style="margin-top:8px"></div></div>
+        <div class="fld"><span class="lab">Išvykimo datos (iki ~11 mėn. į priekį)</span>
+          <div class="pair"><input class="inp" type="date" id="sFrom"> – <input class="inp" type="date" id="sTo"></div></div>
+        <div class="fld"><span class="lab">Iš kur</span><div class="chips" id="origins"></div></div>
+        <div class="fld"><button class="btn primary wide" id="searchBtn">Ieškoti</button>
+          <div class="hint">Kainas renka GitHub serveris — užtrunka 2–5 min. Galima uždaryti programėlę, baigus atsiųsiu pranešimą.</div></div>
+      </div>
+      <!-- Visur -->
+      <div id="allPanel" class="panel hidden">
+        <p id="allInfo" style="margin:0 0 8px"></p>
+        <div class="fld"><span class="lab">Iš kur</span><div class="chips" id="origins2"></div></div>
+        <div class="fld"><input class="inp wide" type="search" id="q" placeholder="Filtruoti: miestas, šalis"></div>
+        <div class="fld"><button class="btn wide" id="allBtn">Atnaujinti plačią paiešką (~1 val.)</button>
+          <div class="hint">Renka kainas iš 5 oro uostų į visas kryptis 4 mėn. į priekį. Naudok retai — tai didelė apkrova.</div></div>
+      </div>
+      <div id="status" class="status hidden"><div class="spin"></div><div id="statusText"></div></div>
       <div class="summary" id="summary"></div>
       <div id="list"></div>
+      <div id="recentBox" class="panel hidden"><h3 style="margin:0 0 6px;font-size:15px">Paskutinės paieškos</h3><div class="recent" id="recent"></div></div>
     </div>
   </section>
 
   <!-- Išsaugotos -->
   <section id="tab-saved" class="hidden">
-    <div class="top"><div class="wrap"><div class="top-in"><h1>Išsaugotos paieškos</h1></div></div></div>
+    <div class="top"><div class="wrap"><div class="top-in"><h1>Išsaugota</h1></div></div></div>
     <div class="wrap page" id="savedList"></div>
   </section>
 
@@ -230,18 +273,18 @@ dialog .inp { width: 100%; }
         <p><code id="ntfyTopic">—</code></p>
         <div class="acts"><a class="btn" id="ntfyLink" target="_blank" rel="noopener">Atidaryti ntfy</a>
           <button class="btn" id="ntfyTest">Siųsti bandomąjį pranešimą</button></div>
-        <p class="hint">Kainos tikrinamos kasdien ~8:00 ir ~20:00, taip pat iškart išsaugojus paiešką. Apie tą pačią kryptį primenama tik kai kaina nukrenta.</p>
+        <p class="hint">Išsaugotos kryptys ir sekami skrydžiai tikrinami kas 6 val. Apie sekamą skrydį pranešama, kai kaina pasikeičia bent €1.</p>
       </div>
       <div class="box">
-        <h3>GitHub raktas paieškoms išsaugoti</h3>
-        <p id="ghStatus">Raktas nenustatytas — paieškas matysi, bet išsaugoti negalėsi.</p>
+        <h3>GitHub raktas</h3>
+        <p id="ghStatus">Raktas nenustatytas — paieškos ir išsaugojimas neveiks.</p>
         <input class="inp" type="password" id="ghToken" placeholder="github_pat_..." style="width:100%">
         <div class="acts"><button class="btn primary" id="ghSave">Išsaugoti raktą</button><button class="btn danger" id="ghClear">Pašalinti</button></div>
-        <p class="hint">Raktas saugomas tik šiame įrenginyje. Jis turi turėti teisę „Contents: Read and write“ tik repozitorijai <code id="repoName"></code>.</p>
+        <p class="hint">Raktas saugomas tik šiame įrenginyje. Reikalingos teisės repozitorijai <code id="repoName"></code>:
+          <b>Contents: Read and write</b> ir <b>Actions: Read and write</b>.</p>
       </div>
       <div class="box">
         <h3>Programėlė</h3>
-        <p id="dataInfo"></p>
         <p><b>Įdiegti į telefoną:</b> Android (Chrome) — meniu ⋮ → „Įdiegti programą“; iPhone (Safari) — „Bendrinti“ → „Į pradžios ekraną“.</p>
         <div class="acts"><button class="btn hidden" id="installBtn">Įdiegti</button><button class="btn danger" id="logout">Atsijungti</button></div>
       </div>
@@ -250,7 +293,7 @@ dialog .inp { width: 100%; }
 
   <nav class="bnav">
     <button data-tab="search" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Paieška</button>
-    <button data-tab="saved"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>Išsaugotos</button>
+    <button data-tab="saved"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>Išsaugota</button>
     <button data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Nustatymai</button>
   </nav>
 </div>
@@ -261,8 +304,7 @@ dialog .inp { width: 100%; }
   <div class="sheet-h"><h2>Filtrai</h2><button class="btn" id="closeFilters">✕</button></div>
   <div class="sheet-c">
     <div class="fld" id="f-tr"><span class="lab">Skrydžiai</span>
-      <div class="seg" id="tr"><button data-v="0">Tik tiesioginiai</button><button data-v="1">Su persėdimu</button></div>
-      <div class="hint">Persėdimai ieškomi į visas kryptis per didžiuosius miestus (Bergamas, Londonas, Budapeštas, Šarlerua, Barselona), o į šiltas kryptis — per visus.</div></div>
+      <div class="seg" id="tr"><button data-v="0">Tik tiesioginiai</button><button data-v="1">Su persėdimu</button></div></div>
     <div class="fld" id="f-lay"><span class="lab">Laukimas persėdimo mieste</span>
       <div class="pair"><select class="sel" id="lay0"></select> – <select class="sel" id="lay1"></select></div>
       <div class="hint">Skrydžiai atskiri — palik atsargos vėlavimui. Daugiau nei 24 val. = galima pabūti tame mieste.</div></div>
@@ -274,8 +316,6 @@ dialog .inp { width: 100%; }
       </div></div>
     <div class="fld rt-only"><span class="lab">Naktų skaičius</span>
       <div class="pair"><input class="inp" type="number" id="nmin" min="1" max="30" inputmode="numeric"> – <input class="inp" type="number" id="nmax" min="1" max="30" inputmode="numeric"></div></div>
-    <div class="fld"><span class="lab">Išvykimo datos</span>
-      <div class="pair"><input class="inp" type="date" id="dfrom"> – <input class="inp" type="date" id="dto"></div></div>
     <div class="fld"><span class="lab">Išvykimo savaitės dienos</span><div class="chips wd" id="outDays"></div></div>
     <div class="fld rt-only"><span class="lab">Grįžimo savaitės dienos</span><div class="chips wd" id="backDays"></div></div>
     <div class="fld"><span class="lab">Išskridimo laikas pirmyn</span>
@@ -286,7 +326,7 @@ dialog .inp { width: 100%; }
       <input class="inp" type="number" id="maxp" min="0" step="5" inputmode="numeric" placeholder="be ribos" style="width:100%"></div>
     <div class="fld"><span class="lab">Avialinijos</span><div class="chips" id="airlines"></div>
       <div class="hint">Nieko nepažymėjus — visos.</div></div>
-    <div class="fld"><label class="check"><input type="checkbox" id="warm"> Tik šiltos / egzotinės kryptys</label></div>
+    <div class="fld all-only"><label class="check"><input type="checkbox" id="warm"> Tik šiltos / egzotinės kryptys</label></div>
     <div class="fld"><span class="lab">Rūšiuoti</span>
       <div class="seg" id="sort"><button data-v="p">Pagal kainą</button><button data-v="n">Pagal pavadinimą</button></div></div>
   </div>
@@ -295,13 +335,13 @@ dialog .inp { width: 100%; }
 
 <!-- Išsaugojimo langas -->
 <dialog id="saveDlg">
-  <form method="dialog" id="saveForm">
-    <h3 style="margin-top:0">Išsaugoti paiešką</h3>
+  <form method="dialog">
+    <h3 style="margin-top:0">Išsaugoti kryptį</h3>
     <div class="fld"><label for="sName">Pavadinimas</label><input class="inp" id="sName" required></div>
-    <div class="fld"><label class="check"><input type="checkbox" id="sNotify" checked> Pranešti į telefoną</label></div>
+    <div class="fld"><label class="check"><input type="checkbox" id="sNotify" checked> Pranešti, kai atsiras pigus skrydis</label></div>
     <div class="fld"><label for="sMax">Kai kaina ne didesnė nei, €</label><input class="inp" type="number" id="sMax" min="1" inputmode="numeric"></div>
     <p class="hint" id="sHint"></p>
-    <div class="acts" style="display:flex;gap:8px;margin-top:14px"><button class="btn" value="cancel" formnovalidate>Atšaukti</button><button class="btn primary" value="ok" id="sOk">Išsaugoti</button></div>
+    <div style="display:flex;gap:8px;margin-top:14px"><button class="btn" value="cancel" formnovalidate>Atšaukti</button><button class="btn primary" value="ok">Išsaugoti</button></div>
   </form>
 </dialog>
 
@@ -318,6 +358,12 @@ const DAY = 86400000;
 const MON = ["saus.","vas.","kov.","bal.","geg.","birž.","liep.","rugp.","rugs.","spal.","lapkr.","gruod."];
 const WD = ["Sk","Pr","An","Tr","Kt","Pn","Št"];
 const WD_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const ORIGINS = ["VNO", "KUN", "RIX", "WAW", "WMI"];
+const ORIGIN_NAMES = { VNO: "Vilnius", KUN: "Kaunas", RIX: "Ryga", WAW: "Varšuva (Chopin)", WMI: "Varšuva (Modlin)" };
+const GROUPS = [ // krypčių grupės paieškai
+  { k: "g:canary", n: "Kanarų salos", codes: ["TFS", "TFN", "LPA", "ACE", "FUE", "SPC"] },
+  { k: "g:madeira", n: "Madeira ir Azorai", codes: ["FNC", "PXO", "PDL", "TER"] },
+];
 const wd = n => WD[weekday(n)];
 const fmtD = n => { const d = new Date(n * DAY); return `${MON[d.getUTCMonth()]} ${d.getUTCDate()}`; };
 const fmtDW = n => `${fmtD(n)}, ${wd(n)}`;
@@ -325,201 +371,259 @@ const eur = v => "€" + (v >= 100 ? Math.round(v) : v.toFixed(2).replace(/\.00$
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const clock = m => { m = ((m % 1440) + 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; };
 const dur = m => `${Math.floor(m / 60)} val.${m % 60 ? " " + (m % 60) + " min" : ""}`;
+const todayN = () => Math.floor(Date.now() / DAY);
 const ls = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
+  json(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
 };
 function toast(msg, ms = 3500) {
   const t = $("toast"); t.textContent = msg; t.classList.remove("hidden");
   clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.add("hidden"), ms);
 }
 
-// GitHub repozitorija nustatoma iš adreso: <savininkas>.github.io/<repo>/
+// ---------- GitHub ----------
 const REPO = (() => {
   const m = location.hostname.match(/^([^.]+)\.github\.io$/);
   if (m) return { owner: m[1], repo: location.pathname.split("/").filter(Boolean)[0] };
   const s = ls.get("sk_repo"); if (s) { const [owner, repo] = s.split("/"); return { owner, repo }; }
   return null;
 })();
+const API = () => `https://api.github.com/repos/${REPO.owner}/${REPO.repo}`;
+const ghHeaders = (extra = {}) => { const t = ls.get("sk_gh"); return { Accept: "application/vnd.github+json", ...(t ? { Authorization: `Bearer ${t}` } : {}), ...extra }; };
+// Failas iš šakos „duomenys“ (užšifruoti rezultatai). Grąžina tekstą arba null.
+async function dataFile(path) {
+  if (!REPO) { const r = await fetch(`_data/${path}`, { cache: "no-store" }); return r.ok ? r.text() : null; }
+  const r = await fetch(`${API()}/contents/${path}?ref=duomenys&t=${Date.now()}`, { headers: ghHeaders({ Accept: "application/vnd.github.raw" }), cache: "no-store" });
+  return r.ok ? r.text() : null;
+}
+const dataCache = new Map();
+async function loadData(path) {
+  if (dataCache.has(path)) return dataCache.get(path);
+  const txt = await dataFile(path); if (!txt) return null;
+  const DATA = await decryptJSON(txt, PASS);
+  const v = { DATA, E: createEngine(DATA) }; dataCache.set(path, v); return v;
+}
 
 // ---------- būsena ----------
-let PASS = null, DATA = null, E = null, S = null;
-let STORE = { settings: {}, searches: [] }, STORE_SHA = null;
+let PASS = null, STORE = { settings: {}, directions: [], tracked: [] }, STORE_SHA = null;
+let VIEW = ls.get("sk_view") || "dir";
+let CUR = null;           // { DATA, E, label, path } — šiuo metu rodomi duomenys
+let S = null;             // filtrai
+let TARGETS = ls.json("sk_targets", []); // [{k, n, codes}]
+let AIRPORTS = null;      // oro uostų sąrašas
 const cardState = new Map();
+let rows = [];
 
 // ---------- prisijungimas ----------
+async function loadStore() {
+  let text = null;
+  if (REPO) {
+    const r = await fetch(`${API()}/contents/docs/paieskos.enc?ref=main&t=${Date.now()}`, { headers: ghHeaders(), cache: "no-store" });
+    if (r.ok) { const j = await r.json(); STORE_SHA = j.sha; text = atob(j.content.replace(/\n/g, "")); }
+  }
+  if (!text) { const r = await fetch("paieskos.enc", { cache: "no-store" }); if (r.ok) text = await r.text(); }
+  if (!text) throw new Error("Nerastas paieškų failas");
+  STORE = await decryptJSON(text, PASS);
+  STORE.settings ||= {}; STORE.directions ||= []; STORE.tracked ||= [];
+}
 async function unlock(pass) {
-  const res = await fetch("data.enc", { cache: "no-store" });
-  if (!res.ok) throw new Error("Duomenų failas nerastas");
-  DATA = await decryptJSON(await res.text(), pass);
   PASS = pass;
-  E = createEngine(DATA);
-  const saved = ls.get("sk_last");
-  S = { ...defaultSearch(DATA), ...(saved ? JSON.parse(saved) : {}) };
-  if (!DATA.origins.includes(S.origin)) S.origin = DATA.origins[0];
+  try { await loadStore(); } catch (e) { PASS = null; throw e; }
+  S = { ...defaultSearch({ origins: ORIGINS, transfers: true }), ...ls.json("sk_filters", {}) };
+  S.origins = (S.origins || ORIGINS).filter(o => ORIGINS.includes(o)); if (!S.origins.length) S.origins = [...ORIGINS];
   $("login").classList.add("hidden"); $("app").classList.remove("hidden");
-  setupControls();
-  syncControls();
-  render();
-  loadStore().then(() => { renderSaved(); renderSettings(); openFromHash(); });
-  renderSettings();
+  setupControls(); syncControls(); renderTargets(); renderRecent(); renderSettings();
+  setView(VIEW, true);
+  openFromHash();
+  dataFile("oro_uostai.json").then(t => { if (t) AIRPORTS = JSON.parse(t).filter(a => !/All Airports/.test(a.n)); });
 }
 $("loginForm").addEventListener("submit", async ev => {
-  ev.preventDefault();
-  $("loginErr").textContent = "Tikrinama…";
+  ev.preventDefault(); $("loginErr").textContent = "Tikrinama…";
   try {
     await unlock($("pw").value);
     if ($("remember").checked) ls.set("sk_pw", $("pw").value);
     $("loginErr").textContent = "";
-  } catch (e) {
-    $("loginErr").textContent = e.message === "BAD_PASSWORD" ? "Neteisingas slaptažodis." : "Klaida: " + e.message;
-  }
+  } catch (e) { $("loginErr").textContent = e.message === "BAD_PASSWORD" ? "Neteisingas slaptažodis." : "Klaida: " + e.message; }
 });
 (async () => {
   const p = ls.get("sk_pw");
-  if (p) { try { await unlock(p); return; } catch { ls.set("sk_pw", null); } }
+  if (p) { try { await unlock(p); return; } catch (e) { if (e.message === "BAD_PASSWORD") ls.set("sk_pw", null); } }
   $("login").classList.remove("hidden");
 })();
 
-// ---------- išsaugotos paieškos (GitHub) ----------
-const ghHeaders = () => {
-  const t = ls.get("sk_gh");
-  return { Accept: "application/vnd.github+json", ...(t ? { Authorization: `Bearer ${t}` } : {}) };
-};
-const ghUrl = () => `https://api.github.com/repos/${REPO.owner}/${REPO.repo}/contents/docs/paieskos.enc`;
-async function loadStore() {
-  try {
-    let text;
-    if (REPO) {
-      const r = await fetch(ghUrl() + "?ref=main&t=" + Date.now(), { headers: ghHeaders(), cache: "no-store" });
-      if (r.ok) { const j = await r.json(); STORE_SHA = j.sha; text = atob(j.content.replace(/\n/g, "")); }
-    }
-    if (!text) { const r = await fetch("paieskos.enc", { cache: "no-store" }); if (r.ok) text = await r.text(); }
-    if (text) STORE = await decryptJSON(text, PASS);
-    STORE.settings ||= {}; STORE.searches ||= []; STORE.tracked ||= [];
-  } catch (e) { console.warn("Paieškų nepavyko įkelti", e); }
-}
 async function saveStore(msg) {
   if (!REPO || !ls.get("sk_gh")) { toast("Pirma nustatymuose įvesk GitHub raktą."); showTab("settings"); return false; }
   const body = { message: msg, content: btoa(await encryptJSON(STORE, PASS)), ...(STORE_SHA ? { sha: STORE_SHA } : {}) };
-  const r = await fetch(ghUrl(), { method: "PUT", headers: { ...ghHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (r.status === 409 || r.status === 422) { // kažkas pakeitė tarpe — perkraunam ir bandom dar kartą
-    const keep = STORE; await loadStore(); STORE = { ...STORE, ...keep };
-    return saveStore(msg);
-  }
+  const r = await fetch(`${API()}/contents/docs/paieskos.enc`, { method: "PUT", headers: ghHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
+  if (r.status === 409 || r.status === 422) { const keep = STORE; await loadStore(); STORE = { ...STORE, ...keep }; return saveStore(msg); }
   if (!r.ok) { toast(`Nepavyko išsaugoti (GitHub ${r.status}). Patikrink raktą.`); return false; }
   STORE_SHA = (await r.json()).content.sha;
   return true;
 }
-
-// ---------- valdikliai ----------
-let controlsReady = false;
-function setupControls() {
-  if (controlsReady) return; controlsReady = true;
-  $("origin").innerHTML = DATA.origins.filter(o => E.fares[o]).map(o => `<option value="${o}">${esc(E.apName(o))} (${o})</option>`).join("");
-  for (const id of ["outDays", "backDays"])
-    $(id).innerHTML = WD_ORDER.map(d => `<button class="chip" data-d="${d}">${WD[d]}</button>`).join("");
-  const hours = [...Array(25)].map((_, h) => `<option value="${h}">${String(h).padStart(2, "0")}:00</option>`).join("");
-  for (const id of ["ot0", "ot1", "bt0", "bt1"]) $(id).innerHTML = hours;
-  const layOpts = [1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 24, 36, 48, 72].map(h => `<option value="${h}">${h} val.</option>`).join("");
-  $("lay0").innerHTML = $("lay1").innerHTML = layOpts;
-  $("lay0").onchange = $("lay1").onchange = () => {
-    let a = +$("lay0").value, b = +$("lay1").value; if (b < a) b = a;
-    S.lay = [a, b]; changed();
-  };
-  $("airlines").innerHTML = E.airlinesPresent.map(a => `<button class="chip" data-a="${a}">${esc(alName(a))}</button>`).join("");
-  for (const id of ["dfrom", "dto"]) { $(id).min = DATA.start; $(id).max = DATA.end; }
-  if (!DATA.transfers) $("f-tr").classList.add("hidden");
-
-  $("origin").onchange = () => { S.origin = $("origin").value; changed(); };
-  $("q").oninput = () => { S.q = $("q").value; changed(); };
-  segClick("mode", v => S.mode = v); segClick("tr", v => S.tr = +v); segClick("sort", v => S.sort = v);
-  for (const id of ["outDays", "backDays"]) $(id).onclick = ev => {
-    const b = ev.target.closest("[data-d]"); if (!b) return;
-    const d = +b.dataset.d, arr = S[id]; const i = arr.indexOf(d);
-    i >= 0 ? arr.splice(i, 1) : arr.push(d); changed();
-  };
-  $("airlines").onclick = ev => {
-    const b = ev.target.closest("[data-a]"); if (!b) return;
-    const i = S.airlines.indexOf(b.dataset.a); i >= 0 ? S.airlines.splice(i, 1) : S.airlines.push(b.dataset.a); changed();
-  };
-  $("presets").onclick = ev => {
-    const p = ev.target.closest("[data-p]"); if (!p) return;
-    if (p.dataset.p === "weekend") Object.assign(S, { mode: "rt", outDays: [4, 5], backDays: [0, 1], nmin: 2, nmax: 4 });
-    if (p.dataset.p === "long") Object.assign(S, { mode: "rt", outDays: [], backDays: [], nmin: 7, nmax: 14 });
-    if (p.dataset.p === "any") Object.assign(S, { outDays: [], backDays: [] });
-    changed();
-  };
-  const num = (id, key, fn) => $(id).onchange = () => { S[key] = fn($(id).value); changed(); };
-  num("nmin", "nmin", v => Math.max(1, Math.min(30, +v || 1)));
-  num("nmax", "nmax", v => Math.max(1, Math.min(30, +v || 1)));
-  num("dfrom", "dfrom", v => v); num("dto", "dto", v => v);
-  num("maxp", "maxp", v => v === "" ? null : +v);
-  $("ot0").onchange = $("ot1").onchange = () => { S.outTime = [+$("ot0").value, +$("ot1").value]; changed(); };
-  $("bt0").onchange = $("bt1").onchange = () => { S.backTime = [+$("bt0").value, +$("bt1").value]; changed(); };
-  $("warm").onchange = () => { S.warm = $("warm").checked; changed(); };
-
-  $("openFilters").onclick = () => toggleSheet(true);
-  $("closeFilters").onclick = $("applyFilters").onclick = $("sheetBg").onclick = () => toggleSheet(false);
-  $("resetFilters").onclick = () => { S = { ...defaultSearch(DATA), origin: S.origin, mode: S.mode }; changed(); };
-  $("saveBtn").onclick = openSaveDialog;
-  document.querySelectorAll(".bnav button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+async function dispatch(veiksmas, id, uzklausa) {
+  if (!REPO || !ls.get("sk_gh")) { toast("Pirma nustatymuose įvesk GitHub raktą."); showTab("settings"); return false; }
+  const r = await fetch(`${API()}/actions/workflows/tikrinti.yml/dispatches`, { method: "POST", headers: ghHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ ref: "main", inputs: { veiksmas, id, uzklausa } }) });
+  if (r.status === 403 || r.status === 404) { toast("Raktui trūksta teisės „Actions: Read and write“."); showTab("settings"); return false; }
+  if (!r.ok) { toast(`Nepavyko paleisti paieškos (GitHub ${r.status}).`); return false; }
+  return true;
 }
-function segClick(id, fn) {
-  $(id).onclick = ev => { const b = ev.target.closest("button"); if (!b) return; fn(b.dataset.v); changed(); };
-}
-function syncControls() {
-  if (S.nmax < S.nmin) S.nmax = S.nmin;
-  $("origin").value = S.origin; $("q").value = S.q || "";
-  const seg = (id, v) => $(id).querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === String(v)));
-  seg("mode", S.mode); seg("tr", S.tr); seg("sort", S.sort);
-  for (const id of ["outDays", "backDays"]) $(id).querySelectorAll("[data-d]").forEach(b => b.classList.toggle("on", S[id].includes(+b.dataset.d)));
-  $("airlines").querySelectorAll("[data-a]").forEach(b => b.classList.toggle("on", S.airlines.includes(b.dataset.a)));
-  $("nmin").value = S.nmin; $("nmax").value = S.nmax;
-  $("dfrom").value = S.dfrom || DATA.start; $("dto").value = S.dto || DATA.end;
-  $("maxp").value = S.maxp ?? "";
-  $("ot0").value = S.outTime[0]; $("ot1").value = S.outTime[1]; $("bt0").value = S.backTime[0]; $("bt1").value = S.backTime[1];
-  $("warm").checked = !!S.warm;
-  S.lay ||= [3, 24];
-  $("lay0").value = S.lay[0]; $("lay1").value = S.lay[1];
-  $("f-lay").classList.toggle("hidden", !S.tr || !DATA.transfers);
-  document.querySelectorAll(".rt-only").forEach(e => e.classList.toggle("hidden", S.mode !== "rt"));
-  const n = activeFilters();
-  $("fcnt").textContent = n; $("fcnt").classList.toggle("hidden", !n);
-}
-function activeFilters() {
-  const d = defaultSearch(DATA); let n = 0;
-  if (S.tr !== d.tr) n++;
-  if (S.tr && S.lay && (S.lay[0] !== d.lay[0] || S.lay[1] !== d.lay[1])) n++;
-  if (S.mode === "rt" && (S.nmin !== d.nmin || S.nmax !== d.nmax)) n++;
-  if ((S.dfrom && S.dfrom !== DATA.start) || (S.dto && S.dto !== DATA.end)) n++;
-  if (S.outDays.length) n++; if (S.mode === "rt" && S.backDays.length) n++;
-  if (S.outTime[0] > 0 || S.outTime[1] < 24) n++; if (S.mode === "rt" && (S.backTime[0] > 0 || S.backTime[1] < 24)) n++;
-  if (S.maxp != null) n++; if (S.airlines.length) n++; if (S.warm) n++;
-  return n;
-}
-let renderT;
-function changed() {
-  syncControls();
-  ls.set("sk_last", JSON.stringify(S));
-  clearTimeout(renderT); renderT = setTimeout(render, 120);
-}
-function toggleSheet(on) {
-  $("sheet").classList.toggle("hidden", !on); $("sheetBg").classList.toggle("hidden", !on);
-  document.body.style.overflow = on ? "hidden" : "";
-}
-function showTab(t) {
-  for (const x of ["search", "saved", "settings"]) $("tab-" + x).classList.toggle("hidden", x !== t);
-  document.querySelectorAll(".bnav button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
-  if (t === "saved") renderSaved();
-  if (t === "settings") renderSettings();
-  window.scrollTo(0, 0);
+async function runStatus(title) {
+  const r = await fetch(`${API()}/actions/runs?event=workflow_dispatch&per_page=15`, { headers: ghHeaders(), cache: "no-store" });
+  if (!r.ok) return null;
+  const run = (await r.json()).workflow_runs.find(x => x.display_title === title);
+  return run ? { status: run.status, conclusion: run.conclusion, url: run.html_url } : null;
 }
 
-// ---------- paieškos rezultatai ----------
-let rows = [];
-function describe(s) {
-  const p = [`${E.apName(s.origin)}`, s.mode === "rt" ? `${s.nmin}–${s.nmax} n.` : "į vieną pusę"];
+// ---------- vaizdas: kryptimi / visur ----------
+async function setView(v, initial) {
+  VIEW = v; ls.set("sk_view", v);
+  $("view").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  $("dirPanel").classList.toggle("hidden", v !== "dir"); $("allPanel").classList.toggle("hidden", v !== "all");
+  document.querySelectorAll(".all-only").forEach(e => e.classList.toggle("hidden", v !== "all"));
+  CUR = null; rows = []; $("list").innerHTML = ""; $("summary").textContent = "";
+  if (v === "all") {
+    $("allInfo").textContent = "Kraunama…";
+    const d = await loadData("visi.enc").catch(() => null);
+    if (VIEW !== "all") return;
+    if (!d) { $("allInfo").textContent = "Plačios paieškos duomenų dar nėra — paleisk ją mygtuku žemiau."; return; }
+    $("allInfo").innerHTML = `Plati paieška: <b>${d.DATA.generated.replace("T", " ")}</b> · ${Object.keys(d.DATA.fares).length} maršrutai · ${d.DATA.start} – ${d.DATA.end}`;
+    CUR = { ...d, label: "Visur", path: "visi.enc" };
+    render();
+  } else {
+    const last = ls.get("sk_lastResult");
+    if (last && initial !== "skip") await openResult(last, true);
+  }
+  $("recentBox").classList.toggle("hidden", v !== "dir" || !ls.json("sk_recent", []).length);
+}
+
+// ---------- krypties pasirinkimas ----------
+// Lietuviški pavadinimai -> kaip juos vadina avialinijos (oro uostų sąrašas angliškas)
+const LT_ALIAS = {
+  egiptas: "Egypt", marokas: "Morocco", ispanija: "Spain", italija: "Italy", portugalija: "Portugal", graikija: "Greece",
+  kipras: "Cyprus", turkija: "Türkiye|Turkey", jordanija: "Jordan", izraelis: "Israel", gruzija: "Georgia",
+  armenija: "Armenia", azerbaidzanas: "Azerbaijan", emyratai: "United Arab Emirates", jae: "United Arab Emirates",
+  "saudo arabija": "Saudi Arabia", prancuzija: "France", vokietija: "Germany", anglija: "United Kingdom",
+  "didzioji britanija": "United Kingdom", "jungtine karalyste": "United Kingdom", skotija: "Edinburgh|Glasgow|Aberdeen",
+  airija: "Ireland", norvegija: "Norway", svedija: "Sweden", danija: "Denmark", suomija: "Finland", islandija: "Iceland",
+  malta: "Malta", kroatija: "Croatia", albanija: "Albania", bulgarija: "Bulgaria", rumunija: "Romania", vengrija: "Hungary",
+  cekija: "Czech", austrija: "Austria", sveicarija: "Switzerland", belgija: "Belgium", nyderlandai: "Netherlands",
+  olandija: "Netherlands", lenkija: "Poland", tunisas: "Tunisia", latvija: "Latvia", estija: "Estonia",
+  juodkalnija: "Montenegro", serbija: "Serbia", makedonija: "Macedonia", bosnija: "Bosnia", slovakija: "Slovakia",
+  slovenija: "Slovenia", kazachstanas: "Kazakhstan", uzbekistanas: "Uzbekistan",
+  londonas: "London", paryzius: "Paris", roma: "Rome", milanas: "Milan", barselona: "Barcelona", atenai: "Athens",
+  neapolis: "Naples", venecija: "Venice", lisabona: "Lisbon", dublinas: "Dublin", briuselis: "Brussels|Charleroi",
+  berlynas: "Berlin", budapestas: "Budapest", praha: "Prague", viena: "Vienna", kopenhaga: "Copenhagen", oslas: "Oslo",
+  stokholmas: "Stockholm", sevilija: "Seville", valensija: "Valencia", majorka: "Palma", ibiza: "Ibiza",
+  kanarai: "Canary", madeira: "Madeira", sicilija: "Sicily|Palermo|Catania|Trapani", sardinija: "Cagliari|Olbia|Alghero",
+  kreta: "Heraklion|Chania", rodas: "Rhodes", korfu: "Corfu", marakesas: "Marrakesh|Marrakech", agadyras: "Agadir",
+  hurgada: "Hurghada", sarm: "Sharm", kairas: "Cairo", dubajus: "Dubai", "abu dabis": "Abu Dhabi",
+  "tel avivas": "Tel Aviv|Tel-Aviv", kutaisis: "Kutaisi", tbilisis: "Tbilisi", jerevanas: "Yerevan", baku: "Baku",
+  stambulas: "Istanbul", antalija: "Antalya", amanas: "Amman", akaba: "Aqaba", pafas: "Paphos", larnaka: "Larnaca",
+};
+const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+function destMatches(q) {
+  const nq = norm(q); if (nq.length < 2 || !AIRPORTS) return [];
+  const terms = [nq];
+  if (nq.length >= 3) for (const [k, v] of Object.entries(LT_ALIAS)) if (k.startsWith(nq)) terms.push(...v.split("|").map(norm));
+  const hit = s => { const n = norm(s); return terms.some(t => n.includes(t)); };
+  const out = [];
+  for (const g of GROUPS) if (hit(g.n) || g.k === "g:canary" && terms.includes("canary")) out.push({ k: g.k, n: g.n, codes: g.codes, sub: "krypčių grupė" });
+  const countries = [...new Set(AIRPORTS.filter(a => hit(a.c)).map(a => a.c))];
+  for (const c of countries.slice(0, 3)) {
+    const codes = AIRPORTS.filter(a => a.c === c).map(a => a.k);
+    if (codes.length > 1) out.push({ k: "c:" + c, n: `${c} — visi oro uostai`, codes, sub: `${codes.length} oro uostai` });
+  }
+  for (const a of AIRPORTS) if (hit(a.n) || norm(a.k) === nq || hit(a.c))
+    out.push({ k: a.k, n: a.n, codes: [a.k], sub: `${a.c} · ${a.k}` });
+  return out.slice(0, 12);
+}
+$("destQ").addEventListener("input", () => {
+  const m = destMatches($("destQ").value), l = $("destList");
+  if (!AIRPORTS) { l.innerHTML = `<button disabled>Oro uostų sąrašas dar kraunamas…</button>`; l.classList.remove("hidden"); return; }
+  l.innerHTML = m.map((x, i) => `<button data-i="${i}">${esc(x.n)} <small>${esc(x.sub)}</small></button>`).join("");
+  l.classList.toggle("hidden", !m.length); l._m = m;
+});
+$("destList").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-i]"); if (!b) return;
+  const x = $("destList")._m[+b.dataset.i];
+  if (!TARGETS.some(t => t.k === x.k)) TARGETS.push({ k: x.k, n: x.n, codes: x.codes });
+  if (TARGETS.flatMap(t => t.codes).length > 12) { TARGETS.pop(); toast("Per daug oro uostų vienai paieškai (iki 12)."); }
+  $("destQ").value = ""; $("destList").classList.add("hidden"); renderTargets();
+});
+document.addEventListener("click", ev => { if (!ev.target.closest(".ac")) $("destList").classList.add("hidden"); });
+function renderTargets() {
+  ls.set("sk_targets", JSON.stringify(TARGETS));
+  $("targets").innerHTML = TARGETS.map((t, i) => `<button class="chip on" data-i="${i}">${esc(t.n)}<span class="x">✕</span></button>`).join("");
+}
+$("targets").addEventListener("click", ev => { const b = ev.target.closest("[data-i]"); if (b) { TARGETS.splice(+b.dataset.i, 1); renderTargets(); } });
+
+// ---------- paieškos paleidimas ----------
+let polling = null;
+$("searchBtn").onclick = async () => {
+  const codes = [...new Set(TARGETS.flatMap(t => t.codes))];
+  if (!codes.length) { toast("Pasirink kryptį."); $("destQ").focus(); return; }
+  if (!S.origins.length) { toast("Pažymėk bent vieną išvykimo oro uostą."); return; }
+  const id = Date.now().toString(36);
+  const name = TARGETS.map(t => t.n).join(", ");
+  const start = $("sFrom").value, end = $("sTo").value;
+  const req = { id, name, targets: codes, start, end, origins: S.origins, S: cleanS() };
+  if (!(await dispatch("kryptis", id, await encryptJSON(req, PASS)))) return;
+  const recent = ls.json("sk_recent", []).filter(r => r.id !== id);
+  recent.unshift({ id, name, targets: codes, start, end, at: new Date().toISOString().slice(0, 16), S: cleanS() });
+  ls.set("sk_recent", JSON.stringify(recent.slice(0, 10)));
+  waitFor(`kryptis ${id}`, `r/${id}.enc`, name, () => openResult(id));
+};
+$("allBtn").onclick = async () => {
+  if (!confirm("Plati paieška užtrunka ~1 val. ir labai apkrauna avialinijų svetaines. Paleisti?")) return;
+  const id = Date.now().toString(36);
+  if (!(await dispatch("visi", id, ""))) return;
+  waitFor(`visi ${id}`, "visi.enc", "plati paieška", () => { dataCache.delete("visi.enc"); setView("all"); }, true);
+};
+function waitFor(title, path, name, done, long) {
+  clearInterval(polling);
+  const t0 = Date.now(), st = $("status");
+  st.classList.remove("hidden");
+  const tick = async () => {
+    const min = Math.floor((Date.now() - t0) / 60000);
+    const run = await runStatus(title).catch(() => null);
+    const s = !run ? "laukiama eilėje" : run.status === "queued" ? "eilėje" : run.status === "in_progress" ? "renkamos kainos" : run.status;
+    $("statusText").innerHTML = `Ieškoma: <b>${esc(name)}</b> — ${s} (${min} min.)<br><small>${long ? "Užtruks ~1 val." : "Paprastai 2–5 min."} Galima uždaryti programėlę — atsiųsiu pranešimą.</small>`;
+    if (run && run.status === "completed") {
+      clearInterval(polling); st.classList.add("hidden");
+      if (run.conclusion === "success") { toast("Paieška baigta."); done(); }
+      else toast("Paieška nepavyko — bandyk dar kartą vėliau.", 6000);
+    }
+  };
+  tick(); polling = setInterval(tick, 10000);
+}
+function cleanS() {
+  const { origin, q, only, ...rest } = S; return JSON.parse(JSON.stringify(rest));
+}
+
+// ---------- rezultatai ----------
+async function openResult(id, quiet) {
+  const recent = ls.json("sk_recent", []).find(r => r.id === id);
+  const d = await loadData(`r/${id}.enc`).catch(() => null);
+  if (!d) { if (!quiet) toast("Šios paieškos rezultatų nebėra — paleisk iš naujo."); return; }
+  ls.set("sk_lastResult", id);
+  CUR = { ...d, label: recent ? recent.name : (d.DATA.targets || []).join(", "), path: `r/${id}.enc`, targets: d.DATA.targets, id };
+  if (recent) {
+    TARGETS = TARGETS.length ? TARGETS : [{ k: recent.targets.join(","), n: recent.name, codes: recent.targets }];
+    $("sFrom").value = recent.start || ""; $("sTo").value = recent.end || "";
+  }
+  render();
+}
+function renderRecent() {
+  const r = ls.json("sk_recent", []);
+  $("recent").innerHTML = r.map(x => `<button data-id="${x.id}"><b>${esc(x.name)}</b><br><small>${x.at.replace("T", " ")} · ${x.start || "nuo dabar"} – ${x.end || "+11 mėn."}</small></button>`).join("");
+  $("recentBox").classList.toggle("hidden", VIEW !== "dir" || !r.length);
+}
+$("recent").addEventListener("click", ev => { const b = ev.target.closest("[data-id]"); if (b) { openResult(b.dataset.id); window.scrollTo(0, 0); } });
+
+function describe(s, D) {
+  const p = [(s.origins || []).join("/"), s.mode === "rt" ? `${s.nmin}–${s.nmax} n.` : "į vieną pusę"];
   if (s.tr) p.push(`su persėdimais${s.lay && (s.lay[0] !== 3 || s.lay[1] !== 24) ? ` (${s.lay[0]}–${s.lay[1]} val.)` : ""}`);
   if (s.outDays.length) p.push(`išvyk. ${WD_ORDER.filter(d => s.outDays.includes(d)).map(d => WD[d]).join("/")}`);
   if (s.mode === "rt" && s.backDays.length) p.push(`grįž. ${WD_ORDER.filter(d => s.backDays.includes(d)).map(d => WD[d]).join("/")}`);
@@ -528,39 +632,44 @@ function describe(s) {
   if (s.warm) p.push("šiltos kryptys");
   if (s.airlines && s.airlines.length) p.push(s.airlines.map(alName).join(", "));
   if (s.maxp != null) p.push(`iki €${s.maxp}`);
-  if (s.q) p.push(`„${s.q}“`);
-  const [a, b] = E.range(s); p.push(`${fmtD(a)}–${fmtD(b)}`);
+  if (D) p.push(`${fmtD(d2n(s.dfrom || D.start))}–${fmtD(d2n(s.dto || D.end))}`);
   return p.join(" · ");
 }
+function searchForCur() {
+  const s = { ...S, origins: S.origins };
+  if (VIEW === "dir" && CUR) { s.only = CUR.targets || []; s.dfrom = $("sFrom").value; s.dto = $("sTo").value; s.q = ""; s.warm = false; }
+  else { s.only = []; s.dfrom = ""; s.dto = ""; }
+  return s;
+}
 function render() {
-  rows = E.compute(S);
-  $("summary").textContent = `${rows.length} kryptys · ${describe(S)}`;
-  const list = $("list");
-  if (!rows.length) { list.innerHTML = `<div class="empty">Pagal šiuos filtrus skrydžių nerasta.<br>Pabandyk praplėsti datas ar kainos ribą.</div>`; return; }
-  list.innerHTML = rows.map((a, i) => {
+  if (!CUR) { rows = []; $("list").innerHTML = ""; $("summary").textContent = ""; return; }
+  const s = searchForCur();
+  rows = CUR.E.computeMulti(s);
+  $("summary").innerHTML = `<b>${esc(CUR.label)}</b> · ${rows.length} variantai · ${esc(describe(s, CUR.DATA))} · kainos ${CUR.DATA.generated.slice(5, 16).replace("T", " ")}`;
+  if (!rows.length) { $("list").innerHTML = `<div class="empty">Pagal šiuos filtrus skrydžių nerasta.<br>Pakeisk filtrus arba paieškos datas.</div>`; return; }
+  const E = CUR.E;
+  $("list").innerHTML = rows.slice(0, 200).map((a, i) => {
     const b = a.best, its = [b.o, b.b].filter(Boolean);
     const als = [...new Set(its.flatMap(it => it.legs.map(l => l.f[1])))].map(x => `<span class="tag">${esc(alName(x))}</span>`).join("");
     const vias = [...new Set(its.map(viaOf).filter(Boolean))].map(v => `<span class="tag via">per ${esc(E.apName(v))}</span>`).join("");
     const when = S.mode === "rt" ? `${fmtDW(b.d)} → ${fmtDW(b.r)} (${b.r - b.o.arrDay} n.)` : fmtDW(b.d);
     return `<section class="card" data-i="${i}">
-      <div class="card-h"><span class="dest">${esc(E.apName(a.dest))} <small>${esc(E.apCountry(a.dest))} · ${a.dest}</small></span>
+      <div class="card-h"><span class="dest">${esc(ORIGIN_NAMES[a.origin] || a.origin)} → ${esc(E.apName(a.dest))} <small>${esc(E.apCountry(a.dest))} · ${a.dest}</small></span>
         <span class="price"><small>nuo </small>${eur(b.total)}</span>
         <span class="best">${when}${vias}${als}</span></div>
       <div class="card-b"></div></section>`;
   }).join("");
-  list.querySelectorAll(".card").forEach((c, i) => i < 3 ? fillCard(c) : io.observe(c));
+  $("list").querySelectorAll(".card").forEach((c, i) => i < 3 ? fillCard(c) : io.observe(c));
 }
-const io = new IntersectionObserver(es => {
-  for (const e of es) if (e.isIntersecting && !e.target.dataset.filled) fillCard(e.target);
-}, { rootMargin: "500px" });
-
-const skey = () => JSON.stringify([S.origin, S.mode, S.tr, S.nmin, S.nmax, S.dfrom, S.dto, S.outDays, S.backDays, S.outTime, S.backTime, S.airlines]);
+const io = new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting && !e.target.dataset.filled) fillCard(e.target); }, { rootMargin: "500px" });
+const range = () => CUR.E.range(searchForCur());
+const skey = () => JSON.stringify([CUR && CUR.path, S.mode, S.tr, S.nmin, S.nmax, $("sFrom").value, $("sTo").value, S.outDays, S.backDays, S.outTime, S.backTime, S.airlines, S.lay]);
 function ensureState(a) {
-  let cs = cardState.get(a.dest);
+  const k = `${a.origin}-${a.dest}`; let cs = cardState.get(k);
   if (!cs || cs.key !== skey()) {
-    const b = a.best, [lo] = E.range(S), gx = Math.max(lo, b.d - 3);
+    const b = a.best, [lo] = range(), gx = Math.max(lo, b.d - 3);
     cs = { key: skey(), gx, gy: Math.max(gx + 1, (b.r || b.d) - 3), month: d2n(n2d(b.d).slice(0, 8) + "01"), pick: null };
-    cardState.set(a.dest, cs);
+    cardState.set(k, cs);
   }
   return cs;
 }
@@ -573,10 +682,9 @@ function fillCard(card) {
      ${cs.pick ? `<div class="pick">${pickHTML(a, cs)}</div>` : ""}`;
   card.dataset.filled = "1";
 }
-
 function niceMax(v) { const p = Math.pow(10, Math.floor(Math.log10(v))), m = v / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p; }
 function chartSVG(a, cs) {
-  const W = 640, H = 150, L = 34, R = 6, T = 14, B = 20, [lo, hi] = E.range(S), span = hi - lo + 1;
+  const W = 640, H = 150, L = 34, R = 6, T = 14, B = 20, [lo, hi] = range(), span = hi - lo + 1;
   const tot = a.days.map(e => e.total).sort((x, y) => x - y);
   const top = niceMax(tot[Math.floor((tot.length - 1) * 0.95)] * 1.05);
   const bw = (W - L - R) / span, y = v => T + (H - T - B) * (1 - v / top);
@@ -651,6 +759,7 @@ function gridOW(a, cs) {
   return h + `</tr></table>` + legend(vals.length);
 }
 function legsHTML(it, word) {
+  const E = CUR.E;
   let h = `<b>${word}</b> · ${eur(it.p)}<ol class="legs">`;
   it.legs.forEach((l, i) => {
     const f = l.f, arr = f[3];
@@ -665,6 +774,14 @@ function legsHTML(it, word) {
   });
   return h + `</ol>`;
 }
+const sig = t => t.legs.map(l => l.from + l.to + l.date).join("|");
+function trackFromPick(a, cs) {
+  const o = a.out.get(cs.pick.d), b = cs.pick.r != null && a.back ? a.back.get(cs.pick.r) : null;
+  const legs = [...o.legs, ...(b ? b.legs : [])].map(l => ({ from: l.from, to: l.to, date: n2d(l.d), al: l.f[1], time: l.f[2] || "" }));
+  return { id: Date.now().toString(36), legs, created: new Date().toISOString().slice(0, 10),
+    label: `${ORIGIN_NAMES[a.origin] || a.origin} → ${CUR.E.apName(a.dest)}, ${fmtD(cs.pick.d)}${b ? ` → ${fmtD(cs.pick.r)}` : " (į vieną pusę)"}`,
+    p0: Math.round((o.p + (b ? b.p : 0)) * 100) / 100 };
+}
 function pickHTML(a, cs) {
   const p = cs.pick, o = a.out.get(p.d); if (!o) return "";
   let h = legsHTML(o, "Pirmyn"), multi = o.legs.length > 1;
@@ -673,35 +790,20 @@ function pickHTML(a, cs) {
     multi ||= b.legs.length > 1;
     h += legsHTML(b, "Atgal") + `Viso <b>${eur(o.p + b.p)}</b> · ${p.r - o.arrDay} n. vietoje`;
   }
-  const t = trackFromPick(a, cs), on = (STORE.tracked || []).some(x => sig(x) === sig(t));
+  const t = trackFromPick(a, cs), on = STORE.tracked.some(x => sig(x) === sig(t));
   return h + `<div class="hint">Kainos be registruoto bagažo, gali būti pasikeitusios.${multi ? " Persėdimai — atskiri bilietai: vėluojant į antrą skrydį nespėjus, avialinija neatlygins." : ""}</div>
     <div style="margin-top:10px"><button class="btn ${on ? "" : "primary"}" data-track ${on ? "disabled" : ""}>${on ? "🔔 Šios kelionės kaina jau sekama" : "🔔 Sekti šios kelionės kainą"}</button></div>`;
 }
-// Sekamas skrydis: konkretūs skrydžiai (maršrutas + data + avialinija) ir kaina sekimo pradžioje
-const sig = t => t.legs.map(l => l.from + l.to + l.date).join("|");
-function trackFromPick(a, cs) {
-  const o = a.out.get(cs.pick.d), b = cs.pick.r != null && a.back ? a.back.get(cs.pick.r) : null;
-  const legs = [...o.legs, ...(b ? b.legs : [])].map(l => ({ from: l.from, to: l.to, date: n2d(l.d), al: l.f[1], time: l.f[2] || "" }));
-  return {
-    id: Date.now().toString(36), legs, created: new Date().toISOString().slice(0, 10),
-    label: `${E.apName(S.origin)} → ${E.apName(a.dest)}, ${fmtD(cs.pick.d)}${b ? ` → ${fmtD(cs.pick.r)}` : ""}${b ? "" : " (į vieną pusę)"}`,
-    p0: Math.round((o.p + (b ? b.p : 0)) * 100) / 100,
-  };
-}
 async function trackPick(a, cs, card) {
   const t = trackFromPick(a, cs);
-  STORE.tracked ||= [];
   if (STORE.tracked.some(x => sig(x) === sig(t))) { toast("Ši kelionė jau sekama."); return; }
   STORE.tracked.push(t);
-  if (await saveStore("Sekamas skrydis")) toast(`Seku kainą (${eur(t.p0)}). Pranešiu, kai ji pasikeis.`);
-  else STORE.tracked.pop();
+  if (await saveStore("Sekamas skrydis")) toast(`Seku kainą (${eur(t.p0)}). Pranešiu, kai ji pasikeis.`); else STORE.tracked.pop();
   fillCard(card);
 }
-
-// paspaudimai kortelėse
 $("list").addEventListener("click", ev => {
   const card = ev.target.closest(".card"); if (!card) return;
-  const a = rows[+card.dataset.i], cs = cardState.get(a.dest); if (!cs) return;
+  const a = rows[+card.dataset.i], cs = cardState.get(`${a.origin}-${a.dest}`); if (!cs) return;
   if (ev.target.closest("[data-track]")) { trackPick(a, cs, card); return; }
   const nav = ev.target.closest("[data-nav]");
   if (nav) {
@@ -714,17 +816,13 @@ $("list").addEventListener("click", ev => {
   const hit = ev.target.closest("rect.hit");
   if (hit) {
     const e = a.days.find(x => x.d === +hit.dataset.d);
-    cs.pick = { d: e.d, r: e.r }; cs.gx = Math.max(E.range(S)[0], e.d - 3);
+    cs.pick = { d: e.d, r: e.r }; cs.gx = Math.max(range()[0], e.d - 3);
     if (e.r) cs.gy = Math.max(cs.gx + 1, e.r - 3);
     cs.month = d2n(n2d(e.d).slice(0, 8) + "01");
-    fillCard(card); card.querySelector(".pick")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    return;
+    fillCard(card); card.querySelector(".pick")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); return;
   }
   const td = ev.target.closest("td[data-d]");
-  if (td) {
-    cs.pick = { d: +td.dataset.d, r: td.dataset.r ? +td.dataset.r : null }; fillCard(card);
-    card.querySelector(".pick")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }
+  if (td) { cs.pick = { d: +td.dataset.d, r: td.dataset.r ? +td.dataset.r : null }; fillCard(card); card.querySelector(".pick")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
 });
 const tip = $("tip");
 $("list").addEventListener("mousemove", ev => {
@@ -740,127 +838,223 @@ $("list").addEventListener("mousemove", ev => {
 });
 $("list").addEventListener("mouseleave", () => tip.style.display = "none");
 
-// ---------- išsaugojimas ----------
+// ---------- filtrai ----------
+let controlsReady = false;
+function originChips(id) {
+  $(id).innerHTML = ORIGINS.map(o => `<button class="chip" data-o="${o}">${ORIGIN_NAMES[o]}</button>`).join("");
+  $(id).onclick = ev => {
+    const b = ev.target.closest("[data-o]"); if (!b) return;
+    const i = S.origins.indexOf(b.dataset.o); i >= 0 ? S.origins.splice(i, 1) : S.origins.push(b.dataset.o); changed();
+  };
+}
+function setupControls() {
+  if (controlsReady) return; controlsReady = true;
+  originChips("origins"); originChips("origins2");
+  for (const id of ["outDays", "backDays"]) $(id).innerHTML = WD_ORDER.map(d => `<button class="chip" data-d="${d}">${WD[d]}</button>`).join("");
+  const hours = [...Array(25)].map((_, h) => `<option value="${h}">${String(h).padStart(2, "0")}:00</option>`).join("");
+  for (const id of ["ot0", "ot1", "bt0", "bt1"]) $(id).innerHTML = hours;
+  const layOpts = [1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 24, 36, 48, 72].map(h => `<option value="${h}">${h} val.</option>`).join("");
+  $("lay0").innerHTML = $("lay1").innerHTML = layOpts;
+  $("airlines").innerHTML = ["FR", "W6"].map(a => `<button class="chip" data-a="${a}">${esc(alName(a))}</button>`).join("");
+  const t = todayN();
+  for (const id of ["sFrom", "sTo"]) { $(id).min = n2d(t + 1); $(id).max = n2d(t + 330); }
+  if (!$("sFrom").value) $("sFrom").value = n2d(t + 1);
+  if (!$("sTo").value) $("sTo").value = n2d(t + 120);
+  $("sFrom").onchange = $("sTo").onchange = () => { cardState.clear(); render(); };
+
+  $("view").onclick = ev => { const b = ev.target.closest("button"); if (b) setView(b.dataset.v); };
+  $("q").oninput = () => { S.q = $("q").value; changed(); };
+  segClick("mode", v => S.mode = v); segClick("tr", v => S.tr = +v); segClick("sort", v => S.sort = v);
+  for (const id of ["outDays", "backDays"]) $(id).onclick = ev => {
+    const b = ev.target.closest("[data-d]"); if (!b) return;
+    const d = +b.dataset.d, arr = S[id], i = arr.indexOf(d); i >= 0 ? arr.splice(i, 1) : arr.push(d); changed();
+  };
+  $("airlines").onclick = ev => {
+    const b = ev.target.closest("[data-a]"); if (!b) return;
+    const i = S.airlines.indexOf(b.dataset.a); i >= 0 ? S.airlines.splice(i, 1) : S.airlines.push(b.dataset.a); changed();
+  };
+  $("presets").onclick = ev => {
+    const p = ev.target.closest("[data-p]"); if (!p) return;
+    if (p.dataset.p === "weekend") Object.assign(S, { mode: "rt", outDays: [4, 5], backDays: [0, 1], nmin: 2, nmax: 4 });
+    if (p.dataset.p === "long") Object.assign(S, { mode: "rt", outDays: [], backDays: [], nmin: 7, nmax: 14 });
+    if (p.dataset.p === "any") Object.assign(S, { outDays: [], backDays: [] });
+    changed();
+  };
+  const num = (id, key, fn) => $(id).onchange = () => { S[key] = fn($(id).value); changed(); };
+  num("nmin", "nmin", v => Math.max(1, Math.min(30, +v || 1)));
+  num("nmax", "nmax", v => Math.max(1, Math.min(30, +v || 1)));
+  num("maxp", "maxp", v => v === "" ? null : +v);
+  $("ot0").onchange = $("ot1").onchange = () => { S.outTime = [+$("ot0").value, +$("ot1").value]; changed(); };
+  $("bt0").onchange = $("bt1").onchange = () => { S.backTime = [+$("bt0").value, +$("bt1").value]; changed(); };
+  $("lay0").onchange = $("lay1").onchange = () => { let a = +$("lay0").value, b = +$("lay1").value; if (b < a) b = a; S.lay = [a, b]; changed(); };
+  $("warm").onchange = () => { S.warm = $("warm").checked; changed(); };
+  $("openFilters").onclick = () => toggleSheet(true);
+  $("closeFilters").onclick = $("applyFilters").onclick = $("sheetBg").onclick = () => toggleSheet(false);
+  $("resetFilters").onclick = () => { S = { ...defaultSearch({ origins: ORIGINS, transfers: true }), origins: S.origins, mode: S.mode }; changed(); };
+  $("saveBtn").onclick = openSaveDialog;
+  document.querySelectorAll(".bnav button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+}
+function segClick(id, fn) { $(id).onclick = ev => { const b = ev.target.closest("button"); if (!b) return; fn(b.dataset.v); changed(); }; }
+function syncControls() {
+  if (S.nmax < S.nmin) S.nmax = S.nmin;
+  S.lay ||= [3, 24];
+  const seg = (id, v) => $(id).querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === String(v)));
+  seg("mode", S.mode); seg("tr", S.tr); seg("sort", S.sort);
+  for (const id of ["origins", "origins2"]) $(id).querySelectorAll("[data-o]").forEach(b => b.classList.toggle("on", S.origins.includes(b.dataset.o)));
+  for (const id of ["outDays", "backDays"]) $(id).querySelectorAll("[data-d]").forEach(b => b.classList.toggle("on", S[id].includes(+b.dataset.d)));
+  $("airlines").querySelectorAll("[data-a]").forEach(b => b.classList.toggle("on", S.airlines.includes(b.dataset.a)));
+  $("nmin").value = S.nmin; $("nmax").value = S.nmax; $("maxp").value = S.maxp ?? "";
+  $("ot0").value = S.outTime[0]; $("ot1").value = S.outTime[1]; $("bt0").value = S.backTime[0]; $("bt1").value = S.backTime[1];
+  $("lay0").value = S.lay[0]; $("lay1").value = S.lay[1]; $("f-lay").classList.toggle("hidden", !S.tr);
+  $("warm").checked = !!S.warm; $("q").value = S.q || "";
+  document.querySelectorAll(".rt-only").forEach(e => e.classList.toggle("hidden", S.mode !== "rt"));
+  const n = activeFilters(); $("fcnt").textContent = n; $("fcnt").classList.toggle("hidden", !n);
+}
+function activeFilters() {
+  const d = defaultSearch({ origins: ORIGINS, transfers: true }); let n = 0;
+  if (S.tr !== d.tr) n++;
+  if (S.tr && (S.lay[0] !== d.lay[0] || S.lay[1] !== d.lay[1])) n++;
+  if (S.mode === "rt" && (S.nmin !== d.nmin || S.nmax !== d.nmax)) n++;
+  if (S.outDays.length) n++; if (S.mode === "rt" && S.backDays.length) n++;
+  if (S.outTime[0] > 0 || S.outTime[1] < 24) n++; if (S.mode === "rt" && (S.backTime[0] > 0 || S.backTime[1] < 24)) n++;
+  if (S.maxp != null) n++; if (S.airlines.length) n++; if (S.warm && VIEW === "all") n++;
+  return n;
+}
+let renderT;
+function changed() {
+  syncControls(); ls.set("sk_filters", JSON.stringify(cleanS()));
+  clearTimeout(renderT); renderT = setTimeout(render, 120);
+}
+function toggleSheet(on) {
+  $("sheet").classList.toggle("hidden", !on); $("sheetBg").classList.toggle("hidden", !on);
+  document.body.style.overflow = on ? "hidden" : "";
+}
+function showTab(t) {
+  for (const x of ["search", "saved", "settings"]) $("tab-" + x).classList.toggle("hidden", x !== t);
+  document.querySelectorAll(".bnav button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+  if (t === "saved") renderSaved();
+  if (t === "settings") renderSettings();
+  if (t === "search") renderRecent();
+  window.scrollTo(0, 0);
+}
+
+// ---------- išsaugojimas: kryptis ----------
 function openSaveDialog() {
-  const cheapest = rows[0] ? Math.ceil(rows[0].best.total) : "";
-  $("sName").value = S.q ? `${S.q} iš ${S.origin}` : (S.warm ? `Šiltos kryptys iš ${S.origin}` : `Iš ${E.apName(S.origin)}`);
-  $("sMax").value = S.maxp ?? (cheapest ? cheapest + 10 : "");
+  if (VIEW !== "dir" || !CUR) { toast("Išsaugoti galima paiešką kryptimi — pirma paspausk „Ieškoti“."); return; }
+  $("sName").value = CUR.label;
+  $("sMax").value = S.maxp ?? (rows[0] ? Math.ceil(rows[0].best.total) + 10 : "");
   $("sNotify").checked = true;
-  $("sHint").textContent = `Paieška: ${describe(S)}`;
+  $("sHint").textContent = `${describe(searchForCur(), CUR.DATA)}. Tikrinama kas 6 val.`;
   $("saveDlg").showModal();
 }
 $("saveDlg").addEventListener("close", async () => {
   if ($("saveDlg").returnValue !== "ok") return;
   const maxp = $("sMax").value === "" ? null : +$("sMax").value;
-  const item = { id: Date.now().toString(36), name: $("sName").value.trim() || "Paieška",
-    notify: $("sNotify").checked && maxp != null, S: { ...JSON.parse(JSON.stringify(S)), maxp } };
-  STORE.searches.push(item);
-  if (await saveStore(`Nauja paieška`)) toast(item.notify ? "Išsaugota. Pranešimai bus patikrinti per kelias minutes." : "Išsaugota.");
-  else STORE.searches.pop();
-  renderSaved();
+  const item = { id: Date.now().toString(36), name: $("sName").value.trim() || CUR.label, targets: CUR.targets,
+    start: $("sFrom").value, end: $("sTo").value, rid: CUR.id, notify: $("sNotify").checked && maxp != null, S: { ...cleanS(), maxp } };
+  STORE.directions.push(item);
+  if (await saveStore("Išsaugota kryptis")) toast(item.notify ? `Išsaugota. Pranešiu, kai kaina bus iki €${maxp}.` : "Išsaugota."); else STORE.directions.pop();
 });
 
-function trackedHTML() {
-  const list = STORE.tracked || [];
-  if (!list.length) return "";
-  const today = Math.floor(Date.now() / DAY);
-  return `<h3 style="margin:4px 2px 10px">🔔 Sekami skrydžiai</h3>` + list.map(t => {
-    const past = d2n(t.legs[0].date) < today, now = past ? null : E.trackedPrice(t.legs);
-    let st;
-    if (past) st = `<span style="color:var(--muted)">Skrydis jau įvyko.</span>`;
-    else if (!now) st = `<span class="err">Kainos nebėra — gal išparduota.</span>`;
-    else {
-      const d = Math.round((now.p - t.p0) * 100) / 100;
-      st = `Dabar <b>${eur(now.p)}</b> · pradinė ${eur(t.p0)}${Math.abs(d) >= 1 ? ` · <b class="${d < 0 ? "ok" : "err"}">${d < 0 ? "↓" : "↑"} ${eur(Math.abs(d))}</b>` : " · nepasikeitė"}`;
-    }
-    const legs = t.legs.map(l => `${fmtD(d2n(l.date))} ${l.time || ""} ${l.from}→${l.to} · ${esc(alName(l.al))} · <a href="${bookUrl(l.al, l.from, l.to, d2n(l.date))}" target="_blank" rel="noopener">užsakyti ↗</a>`).join("<br>");
-    return `<div class="box" data-tid="${esc(t.id)}"><h3>${esc(t.label)}</h3><p>${st}</p><p style="font-size:13px">${legs}</p>
-      <div class="acts"><button class="btn danger untrack">Nebesekti</button></div></div>`;
-  }).join("") + `<h3 style="margin:18px 2px 10px">☆ Išsaugotos paieškos</h3>`;
-}
-function renderSaved() {
-  const el = $("savedList"); if (!E) return;
-  if (!STORE.searches.length) {
-    el.innerHTML = trackedHTML() + `<div class="empty">Išsaugotų paieškų dar nėra.<br>Paieškos skiltyje nustatyk filtrus ir spausk ☆.<br>Konkrečią kelionę gali sekti: paspausk kainą tinklelyje → „Sekti šios kelionės kainą“.</div>`; return;
+// ---------- Išsaugota ----------
+let sekami = null;
+async function renderSaved() {
+  const el = $("savedList");
+  if (!sekami) sekami = await loadData("sekami.enc").catch(() => null);
+  const today = todayN();
+  let h = "";
+  if (STORE.tracked.length) {
+    h += `<h3 style="margin:4px 2px 10px">🔔 Sekami skrydžiai</h3>` + STORE.tracked.map(t => {
+      const past = d2n(t.legs[0].date) < today, now = past || !sekami ? null : sekami.E.trackedPrice(t.legs);
+      let st;
+      if (past) st = `<span style="color:var(--muted)">Skrydis jau įvyko.</span>`;
+      else if (!sekami) st = `Pradinė kaina ${eur(t.p0)} · bus patikrinta per artimiausią tikrinimą (kas 6 val.).`;
+      else if (!now) st = `<span class="err">Kainos nebėra arba dar nepatikrinta.</span> Pradinė ${eur(t.p0)}.`;
+      else {
+        const d = Math.round((now.p - t.p0) * 100) / 100;
+        st = `Dabar <b>${eur(now.p)}</b> · pradinė ${eur(t.p0)}${Math.abs(d) >= 1 ? ` · <b class="${d < 0 ? "ok" : "err"}">${d < 0 ? "↓" : "↑"} ${eur(Math.abs(d))}</b>` : " · nepasikeitė"}`;
+      }
+      const legs = t.legs.map(l => `${fmtD(d2n(l.date))} ${l.time || ""} ${l.from}→${l.to} · ${esc(alName(l.al))} · <a href="${bookUrl(l.al, l.from, l.to, d2n(l.date))}" target="_blank" rel="noopener">užsakyti ↗</a>`).join("<br>");
+      return `<div class="box" data-tid="${esc(t.id)}"><h3>${esc(t.label)}</h3><p>${st}</p><p style="font-size:13px">${legs}</p>
+        <div class="acts"><button class="btn danger untrack">Nebesekti</button></div></div>`;
+    }).join("");
   }
-  el.innerHTML = trackedHTML() + STORE.searches.map(s => `<div class="box" data-id="${esc(s.id)}">
-      <h3>${esc(s.name)}</h3>
-      <p>${esc(describe({ ...defaultSearch(DATA), ...s.S }))}</p>
-      <p class="now" data-id="${esc(s.id)}">Skaičiuojama…</p>
-      <label class="check"><input type="checkbox" class="notify" ${s.notify ? "checked" : ""} ${s.S.maxp == null ? "disabled" : ""}> Pranešti į telefoną${s.S.maxp == null ? " (nustatyk kainos ribą)" : ""}</label>
-      <div class="acts"><button class="btn primary open">Atidaryti</button><button class="btn danger del">Ištrinti</button></div>
-    </div>`).join("");
-  // Dabartinė geriausia kaina — skaičiuojama po vieną, kad nesustingtų ekranas
-  let i = 0;
-  const step = () => {
-    const s = STORE.searches[i++]; if (!s) return;
-    const p = el.querySelector(`.now[data-id="${CSS.escape(s.id)}"]`);
-    if (p) {
-      const r = E.compute({ ...defaultSearch(DATA), ...s.S, maxp: null });
-      const ok = r.filter(x => s.S.maxp == null || x.best.total <= s.S.maxp);
-      p.innerHTML = r.length ? `Dabar pigiausia: <b>${esc(E.apName(r[0].dest))} ${eur(r[0].best.total)}</b>${s.S.maxp != null ? ` · tinka pagal ribą: ${ok.length}` : ""}` : "Šiuo metu tinkamų skrydžių nėra.";
-    }
-    setTimeout(step, 30);
-  };
-  setTimeout(step, 50);
+  h += `<h3 style="margin:18px 2px 10px">☆ Išsaugotos kryptys</h3>`;
+  if (!STORE.directions.length) h += `<div class="empty" style="padding:16px 0">Išsaugotų krypčių dar nėra.<br>Ieškok kryptimi ir spausk ☆.</div>`;
+  h += STORE.directions.map(d => {
+    let now = "";
+    if (sekami && sekami.DATA.targets && d.targets.every(c => sekami.DATA.targets.includes(c))) {
+      const r = sekami.E.computeMulti({ ...defaultSearch(sekami.DATA), ...d.S, only: d.targets, dfrom: d.start, dto: d.end, maxp: null });
+      now = r.length ? `Dabar pigiausia: <b>${esc(ORIGIN_NAMES[r[0].origin] || r[0].origin)} → ${esc(sekami.E.apName(r[0].dest))} ${eur(r[0].best.total)}</b>` : "Šiuo metu tinkamų skrydžių nėra.";
+    } else now = "Bus patikrinta per artimiausią tikrinimą (kas 6 val.).";
+    return `<div class="box" data-id="${esc(d.id)}"><h3>${esc(d.name)}</h3>
+      <p>${esc(describe({ ...defaultSearch({ origins: ORIGINS, transfers: true }), ...d.S }))} · ${d.start || ""} – ${d.end || ""}</p>
+      <p>${now}</p>
+      <label class="check"><input type="checkbox" class="notify" ${d.notify ? "checked" : ""} ${d.S.maxp == null ? "disabled" : ""}> Pranešti${d.S.maxp != null ? `, kai kaina iki €${d.S.maxp}` : " (nustatyk kainos ribą)"}</label>
+      <div class="acts"><button class="btn primary open">Atidaryti</button><button class="btn danger del">Ištrinti</button></div></div>`;
+  }).join("");
+  el.innerHTML = h;
 }
 $("savedList").addEventListener("click", async ev => {
   const tb = ev.target.closest(".box[data-tid]");
   if (tb && ev.target.closest(".untrack")) {
-    const i = (STORE.tracked || []).findIndex(t => t.id === tb.dataset.tid); if (i < 0) return;
+    const i = STORE.tracked.findIndex(t => t.id === tb.dataset.tid); if (i < 0) return;
     const [rm] = STORE.tracked.splice(i, 1);
     if (await saveStore("Nebesekamas skrydis")) toast("Nebeseku."); else STORE.tracked.splice(i, 0, rm);
     renderSaved(); return;
   }
   const box = ev.target.closest(".box[data-id]"); if (!box) return;
-  const idx = STORE.searches.findIndex(s => s.id === box.dataset.id); if (idx < 0) return;
-  if (ev.target.closest(".open")) { applySearch(STORE.searches[idx]); return; }
+  const idx = STORE.directions.findIndex(d => d.id === box.dataset.id); if (idx < 0) return;
+  if (ev.target.closest(".open")) { openDirection(STORE.directions[idx]); return; }
   if (ev.target.closest(".del")) {
-    if (!confirm(`Ištrinti „${STORE.searches[idx].name}“?`)) return;
-    const [rm] = STORE.searches.splice(idx, 1);
-    if (await saveStore("Ištrinta paieška")) toast("Ištrinta."); else STORE.searches.splice(idx, 0, rm);
+    if (!confirm(`Ištrinti „${STORE.directions[idx].name}“?`)) return;
+    const [rm] = STORE.directions.splice(idx, 1);
+    if (await saveStore("Ištrinta kryptis")) toast("Ištrinta."); else STORE.directions.splice(idx, 0, rm);
     renderSaved();
   }
 });
 $("savedList").addEventListener("change", async ev => {
   if (!ev.target.classList.contains("notify")) return;
-  const s = STORE.searches.find(x => x.id === ev.target.closest(".box").dataset.id);
-  s.notify = ev.target.checked;
-  if (!(await saveStore("Pakeisti pranešimai"))) { s.notify = !s.notify; ev.target.checked = s.notify; }
+  const d = STORE.directions.find(x => x.id === ev.target.closest(".box").dataset.id);
+  d.notify = ev.target.checked;
+  if (!(await saveStore("Pakeisti pranešimai"))) { d.notify = !d.notify; ev.target.checked = d.notify; }
 });
-function applySearch(s) {
-  S = { ...defaultSearch(DATA), ...JSON.parse(JSON.stringify(s.S)) };
-  if (!DATA.origins.includes(S.origin)) S.origin = DATA.origins[0];
-  changed(); showTab("search");
+async function openDirection(d) {
+  S = { ...defaultSearch({ origins: ORIGINS, transfers: true }), ...JSON.parse(JSON.stringify(d.S)) };
+  TARGETS = [{ k: d.targets.join(","), n: d.name, codes: d.targets }]; renderTargets();
+  $("sFrom").value = d.start || ""; $("sTo").value = d.end || "";
+  await setView("dir", "skip"); showTab("search"); syncControls();
+  const fresh = sekami && sekami.DATA.targets && d.targets.every(c => sekami.DATA.targets.includes(c));
+  if (fresh) { CUR = { ...sekami, label: d.name, path: "sekami.enc", targets: d.targets }; render(); }
+  else if (d.rid) await openResult(d.rid);
+  else toast("Duomenų dar nėra — spausk „Ieškoti“.");
 }
-function openFromHash() {
-  if (location.hash === "#saved") { showTab("saved"); history.replaceState(null, "", location.pathname); return; }
-  const m = location.hash.match(/#s=([^&]+)/); if (!m) return;
-  const s = STORE.searches.find(x => x.id === decodeURIComponent(m[1]));
-  if (s) applySearch(s);
+async function openFromHash() {
+  const h = location.hash; if (!h) return;
   history.replaceState(null, "", location.pathname);
+  if (h === "#saved") return showTab("saved");
+  if (h === "#visur") return setView("all");
+  let m = h.match(/^#r=(\w+)/); if (m) { await setView("dir", "skip"); return openResult(m[1]); }
+  m = h.match(/^#d=([^&]+)/);
+  if (m) { if (!sekami) sekami = await loadData("sekami.enc").catch(() => null); const d = STORE.directions.find(x => x.id === decodeURIComponent(m[1])); if (d) openDirection(d); }
 }
 
 // ---------- nustatymai ----------
 function renderSettings() {
-  if (!DATA) return;
   const topic = STORE.settings.ntfy;
   $("ntfyTopic").textContent = topic || "— (nenustatyta)";
   $("ntfyLink").href = topic ? `https://ntfy.sh/${topic}` : "https://ntfy.sh/";
   $("repoName").textContent = REPO ? `${REPO.owner}/${REPO.repo}` : "(nežinoma)";
-  $("ghStatus").innerHTML = ls.get("sk_gh") ? `<span class="ok">Raktas nustatytas.</span>` : "Raktas nenustatytas — paieškas matysi, bet išsaugoti negalėsi.";
-  const n = Object.keys(DATA.fares).length;
-  $("dataInfo").textContent = `Kainos atnaujintos ${DATA.generated.replace("T", " ")} · ${n} maršrutai · ${DATA.start} – ${DATA.end}`;
+  $("ghStatus").innerHTML = ls.get("sk_gh") ? `<span class="ok">Raktas nustatytas.</span>` : "Raktas nenustatytas — paieškos ir išsaugojimas neveiks.";
 }
 $("ghSave").onclick = async () => {
   const t = $("ghToken").value.trim(); if (!t) return;
   if (!REPO) { toast("Nežinoma repozitorija."); return; }
-  const r = await fetch(`https://api.github.com/repos/${REPO.owner}/${REPO.repo}`, { headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${t}` } });
+  const r = await fetch(`${API()}`, { headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${t}` } });
   if (!r.ok) { toast(`Raktas netinka (GitHub ${r.status}).`); return; }
   const j = await r.json();
   if (j.permissions && !j.permissions.push) { toast("Raktas neturi rašymo teisės į repozitoriją."); return; }
   ls.set("sk_gh", t); $("ghToken").value = ""; renderSettings(); toast("Raktas išsaugotas.");
-  await loadStore(); renderSaved();
 };
 $("ghClear").onclick = () => { ls.set("sk_gh", null); renderSettings(); };
 $("ntfyTest").onclick = async () => {

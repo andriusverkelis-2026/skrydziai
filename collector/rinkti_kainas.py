@@ -6,6 +6,7 @@ Naudojimas:
     python collector/rinkti_kainas.py                       # VNO KUN RIX WAW WMI, 120 d., su persėdimais
     python collector/rinkti_kainas.py --is VNO KUN --dienos 60
     python collector/rinkti_kainas.py --be-persedimu        # tik tiesioginiai (~9 min vietoj ~22)
+    python collector/rinkti_kainas.py --plan build/plan.json  # tikslinė paieška (žr. tikslinis())
 
 Abi avialinijos naudoja neoficialius savo svetainių API adresus — jie gali pasikeisti.
 Kainos: vienam suaugusiam, be registruoto bagažo, EUR.
@@ -174,6 +175,7 @@ class Ryanair:
         self.s.headers.update(BASE_H)
         self.start, self.end = start, end
         self.fetched: set[tuple[str, str]] = set()
+        self.extra_days: set[str] = set()  # sekamų skrydžių datos, kurios gali būti už laikotarpio ribų
 
     def direct_routes(self, origins: list[str]) -> set[tuple[str, str]]:
         routes = set()
@@ -233,7 +235,7 @@ class Ryanair:
             if f.get("unavailable") or f.get("soldOut") or not f.get("price"):
                 continue
             day = f["day"]
-            if not (str(self.start) <= day <= str(self.end)):
+            if not (str(self.start) <= day <= str(self.end)) and day not in self.extra_days:
                 continue
             dep, arr = f.get("departureDate") or "", f.get("arrivalDate") or ""
             arr_min = None
@@ -356,46 +358,149 @@ class Wizz:
         return True
 
 
+# ---------------------------------------------------------------- tikslinė paieška
+# Kaunas Wizz žemėlapyje turi Vilniaus jungtis (užklausos grąžina VNO skrydžius) — Wizz jam praleidžiame
+WIZZ_SKIP = {"KUN"}
+
+
+def tikslinis(plan: dict, origins: list[str], ry: "Ryanair | None", wz: "Wizz | None") -> None:
+    """Kainos tik į nurodytas kryptis (plan["targets"]): tiesiogiai ir per VISUS persėdimo miestus,
+    į kuriuos skrendama iš išvykimo oro uostų ir iš kurių skrendama į tikslą. Plius sekami skrydžiai."""
+    targets = [t.upper() for t in plan.get("targets", [])]
+    fr_cache: dict[str, set[str]] = {}
+
+    def fr(code: str) -> set[str]:
+        if not ry:
+            return set()
+        if code not in fr_cache:
+            d = get_json(ry.s, "GET", Ryanair.ROUTES + code, log=False)
+            out = set()
+            for x in d if isinstance(d, list) else []:
+                a = x["arrivalAirport"]
+                c = a.get("coordinates") or {}
+                put_airport(a["code"], a.get("name", a["code"]), a["country"]["name"], c.get("latitude"), c.get("longitude"))
+                out.add(a["code"])
+            fr_cache[code] = out
+        return fr_cache[code]
+
+    def wzr(code: str) -> set[str]:
+        if not wz or code in WIZZ_SKIP:
+            return set()
+        return {c["iata"] for c in wz.cities.get(code, {}).get("connections", [])} - WIZZ_SKIP
+
+    if targets:
+        reach = {o: fr(o) | wzr(o) for o in origins}
+        pairs: set[tuple[str, str]] = set()
+        hubs: set[str] = set()
+        for t in targets:
+            conn = fr(t) | wzr(t)
+            for o in origins:
+                if o == t:
+                    continue
+                if t in reach[o]:
+                    pairs |= {(o, t), (t, o)}
+                for h in (reach[o] & conn) - {t}:
+                    hubs.add(h)
+                    pairs |= {(o, h), (h, o), (h, t), (t, h)}
+        fr_pairs = {(a, b) for a, b in pairs if b in fr(a)}
+        wz_pairs = {(a, b) for a, b in pairs if b in wzr(a)}
+        print(f"Kryptys: {len(targets)}, persėdimo miestai: {len(hubs)}")
+        if ry:
+            ry.fetch(fr_pairs, "Ryanair")
+        if wz:
+            wz.fetch(wz_pairs, "Wizz")
+
+    # Sekami skrydžiai: tik konkretūs maršrutai ir mėnesiai / dienos
+    tracked = plan.get("tracked", [])
+    if tracked:
+        fr_jobs = sorted({(l["from"], l["to"], dt.date.fromisoformat(l["date"]).replace(day=1))
+                          for l in tracked if l.get("al") in ("FR", "R")})
+        wz_jobs = sorted({(*sorted((l["from"], l["to"])), dt.date.fromisoformat(l["date"]),
+                           dt.date.fromisoformat(l["date"])) for l in tracked if l.get("al") in ("W6", "W")})
+        print(f"Sekami skrydžiai: {len(tracked)} (Ryanair užklausų {len(fr_jobs)}, Wizz {len(wz_jobs)})")
+        if ry and fr_jobs:
+            ry.extra_days |= {l["date"] for l in tracked}
+            run_jobs(ry._job, fr_jobs, workers=3, label="Ryanair sekami")
+        if wz and wz.base and wz_jobs:
+            run_jobs(wz._job, wz_jobs, workers=2, label="Wizz sekami")
+
+
+def oro_uostai(ry: "Ryanair | None", wz: "Wizz | None") -> list[dict]:
+    """Visi Ryanair ir Wizz oro uostai — krypties pasirinkimui programėlėje."""
+    out: dict[str, dict] = {}
+    if ry:
+        d = get_json(ry.s, "GET", "https://www.ryanair.com/api/views/locate/5/airports/en/active", log=False)
+        for a in d if isinstance(d, list) else []:
+            code, country = a["code"], a["country"]["name"]
+            out[code] = {"k": code, "n": a["name"].strip(), "c": country, "w": int(is_warm(code, country))}
+    if wz:
+        for code, c in wz.cities.items():
+            if code not in out and c.get("connections") and "All Airports" not in (c.get("shortName") or ""):
+                country = (c.get("countryName") or "").strip()
+                out[code] = {"k": code, "n": (c.get("shortName") or code).strip(), "c": country,
+                             "w": int(is_warm(code, country))}
+    return sorted(out.values(), key=lambda x: (x["c"], x["n"]))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--is", dest="origins", nargs="+", default=DEFAULT_ORIGINS)
-    ap.add_argument("--dienos", type=int, default=120, help="kiek dienų į priekį ieškoti")
+    ap.add_argument("--dienos", type=int, default=120, help="kiek dienų į priekį ieškoti (plačiai paieškai)")
     ap.add_argument("--be-persedimu", action="store_true", help="nerinkti antro skrydžio kainų")
     ap.add_argument("--hubai", nargs="*", default=DEFAULT_HUBS,
-                    help="persėdimo miestai, iš kurių renkamos kainos į visas kryptis")
+                    help="persėdimo miestai, iš kurių renkamos kainos į visas kryptis (plačiai paieškai)")
+    ap.add_argument("--plan", type=Path, help="tikslinė paieška: JSON su targets, start, end, tracked")
+    ap.add_argument("--oro-uostai", type=Path, help="kur įrašyti visų oro uostų sąrašą")
     ap.add_argument("--be-ryanair", action="store_true")
     ap.add_argument("--be-wizz", action="store_true")
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT, help="kur įrašyti JSON")
     args = ap.parse_args()
 
     origins = [o.upper() for o in args.origins]
-    start = dt.date.today() + dt.timedelta(days=1)
-    end = start + dt.timedelta(days=args.dienos - 1)
+    today = dt.date.today()
+    plan = json.loads(args.plan.read_text(encoding="utf-8")) if args.plan else None
+    if plan:
+        origins = [o.upper() for o in plan.get("origins") or origins]
+        latest = today + dt.timedelta(days=330)
+        start = max(today + dt.timedelta(days=1), dt.date.fromisoformat(plan.get("start") or str(today)))
+        end = min(latest, dt.date.fromisoformat(plan.get("end") or str(latest)))
+        end = max(start, end)
+    else:
+        start = today + dt.timedelta(days=1)
+        end = start + dt.timedelta(days=args.dienos - 1)
     t0 = time.time()
     ry = None if args.be_ryanair else Ryanair(start, end)
     wz = None if args.be_wizz else Wizz(start, end)
 
-    # 1. Tiesioginiai skrydžiai iš (ir atgal į) išvykimo oro uostus
-    if ry:
-        ry.fetch(ry.direct_routes(origins), "Ryanair tiesioginiai")
-    if wz:
-        wz.fetch(wz.routes_from(set(origins), warm_only=False), "Wizz tiesioginiai")
-
-    # 2. Persėdimai: iš kiekvieno pasiekiamo miesto — į šiltas kryptis ir atgal
-    if not args.be_persedimu:
-        hubs = {b for (a, b) in fares if a in origins} - set(origins)
-        full = {h.upper() for h in args.hubai} & hubs
-        print(f"Persėdimo miestai: {len(hubs)}, iš jų į visas kryptis: {', '.join(sorted(full)) or '—'}")
+    if plan:
+        tikslinis(plan, origins, ry, wz)
+    else:
+        # 1. Tiesioginiai skrydžiai iš (ir atgal į) išvykimo oro uostus
         if ry:
-            ry.fetch(ry.hub_routes(hubs, skip=set(origins), full=full), "Ryanair persėdimai")
+            ry.fetch(ry.direct_routes(origins), "Ryanair tiesioginiai")
         if wz:
-            wz.fetch(wz.routes_from(hubs - full, warm_only=True, skip=set(origins))
-                     | wz.routes_from(full, warm_only=False, skip=set(origins)), "Wizz persėdimai")
+            wz.fetch(wz.routes_from(set(origins), warm_only=False), "Wizz tiesioginiai")
+        # 2. Persėdimai: iš didžiųjų miestų — į visas kryptis, iš kitų — į šiltas
+        if not args.be_persedimu:
+            hubs = {b for (a, b) in fares if a in origins} - set(origins)
+            full = {h.upper() for h in args.hubai} & hubs
+            print(f"Persėdimo miestai: {len(hubs)}, iš jų į visas kryptis: {', '.join(sorted(full)) or '—'}")
+            if ry:
+                ry.fetch(ry.hub_routes(hubs, skip=set(origins), full=full), "Ryanair persėdimai")
+            if wz:
+                wz.fetch(wz.routes_from(hubs - full, warm_only=True, skip=set(origins))
+                         | wz.routes_from(full, warm_only=False, skip=set(origins)), "Wizz persėdimai")
+
+    if args.oro_uostai:
+        args.oro_uostai.parent.mkdir(parents=True, exist_ok=True)
+        args.oro_uostai.write_text(json.dumps(oro_uostai(ry, wz), ensure_ascii=False, separators=(",", ":")),
+                                   encoding="utf-8")
 
     data = {
         "generated": dt.datetime.now().isoformat(timespec="minutes"),
         "start": str(start), "end": str(end), "origins": origins,
-        "transfers": not args.be_persedimu,
+        "transfers": plan is not None or not args.be_persedimu,
+        "targets": plan.get("targets", []) if plan else None,
         "airports": {k: v for k, v in airports.items() if "n" in v},
         "fares": {f"{a}-{b}": dict(sorted(v.items())) for (a, b), v in sorted(fares.items()) if v},
         "errors": errors[:100],

@@ -30,6 +30,7 @@ export function defaultSearch(DATA) {
     origin: DATA.origins[0], mode: "rt", tr: DATA.transfers ? 1 : 0, nmin: 5, nmax: 10,
     dfrom: "", dto: "", outDays: [], backDays: [], outTime: [0, 24], backTime: [0, 24],
     maxp: null, q: "", warm: false, sort: "p", airlines: [], lay: [...DEFAULT_LAY],
+    origins: [...DATA.origins], only: [],
   };
 }
 
@@ -146,6 +147,7 @@ export function createEngine(DATA) {
     const rows = [];
     for (const dest of Object.keys(I.out)) {
       if (DATA.origins.includes(dest)) continue;
+      if (S.only && S.only.length && !S.only.includes(dest)) continue;
       if (S.warm && !isWarm(dest)) continue;
       if (q && !(`${apName(dest)} ${apCountry(dest)} ${dest}`.toLowerCase().includes(q))) continue;
       const a = analyse(S, I, dest);
@@ -158,6 +160,15 @@ export function createEngine(DATA) {
     return rows;
   }
 
+  // Iš kelių išvykimo oro uostų: eilutės turi .origin
+  function computeMulti(S) {
+    const os = (S.origins && S.origins.length ? S.origins : DATA.origins).filter(o => fares[o]);
+    const rows = os.flatMap(o => compute({ ...S, origin: o }).map(r => ({ ...r, origin: o })));
+    rows.sort(S.sort === "n" ? (x, y) => apName(x.dest).localeCompare(apName(y.dest), "lt") || x.best.total - y.best.total
+      : (x, y) => x.best.total - y.best.total);
+    return rows;
+  }
+
   // Sekamo skrydžio dabartinė kaina: legs = [{from, to, date, al}] -> {p, legs: [f...]} arba null (nebėra)
   function trackedPrice(legs) {
     const fs = legs.map(l => (fares[l.from] || {})[l.to]?.get(d2n(l.date)));
@@ -165,7 +176,7 @@ export function createEngine(DATA) {
     return { p: Math.round(fs.reduce((s, f) => s + f[0], 0) * 100) / 100, fs };
   }
 
-  return { DATA, fares, START, END, range, apName, apCountry, isWarm, airlinesPresent, legArr, itins, analyse, compute, trackedPrice };
+  return { DATA, fares, START, END, range, apName, apCountry, isWarm, airlinesPresent, legArr, itins, analyse, compute, computeMulti, trackedPrice };
 }
 
 export const route = it => [it.legs[0].from, ...it.legs.map(l => l.to)].join("→");
