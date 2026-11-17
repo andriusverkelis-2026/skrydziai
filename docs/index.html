@@ -199,6 +199,21 @@ dialog .inp { width: 100%; }
   padding: 10px 2px; cursor: pointer; }
 .recent button:first-child { border-top: 0; }
 .recent small { color: var(--muted); }
+/* kalendorius */
+.cal-wd { display: grid; grid-template-columns: repeat(7, 1fr); padding: 8px 16px; border-bottom: 1px solid var(--border);
+  font-size: 12px; color: var(--muted); text-align: center; }
+.cal-wd span:nth-child(n+6) { color: var(--accent); }
+.cal-m { margin: 14px 0 4px; font-weight: 600; text-transform: capitalize; }
+.cal-g { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 4px; }
+.cal-g button { border: 0; background: transparent; height: 42px; font-size: 15px; cursor: pointer; color: var(--text);
+  font-variant-numeric: tabular-nums; }
+.cal-g button:disabled { color: var(--border); cursor: default; }
+.cal-g button.we:not(:disabled) { color: var(--accent); }
+.cal-g button.in { background: var(--surface-2); }
+.cal-g button.a, .cal-g button.b { background: var(--accent); color: #fff !important; font-weight: 700; }
+.cal-g button.a { border-radius: 21px 0 0 21px; } .cal-g button.b { border-radius: 0 21px 21px 0; }
+.cal-g button.a.b { border-radius: 21px; }
+.cal-g button.today { text-decoration: underline; }
 /* varnelių sąrašai */
 .cklist { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 12px; }
 .ck { display: flex; align-items: center; gap: 10px; min-height: 40px; cursor: pointer; }
@@ -255,7 +270,8 @@ dialog .inp { width: 100%; }
           <button class="btn wide dest-btn" id="openDest">Pasirinkti kryptis…</button>
           <div class="chips" id="targets" style="margin-top:8px"></div></div>
         <div class="fld"><span class="lab">Išvykimo datos (iki ~11 mėn. į priekį)</span>
-          <div class="pair"><input class="inp" type="date" id="sFrom"> – <input class="inp" type="date" id="sTo"></div></div>
+          <input type="hidden" id="sFrom"><input type="hidden" id="sTo">
+          <button class="btn wide dest-btn" id="openCal">📅 Pasirinkti datas…</button></div>
         <div class="fld"><button class="btn primary wide" id="searchBtn">Ieškoti</button>
           <div class="hint">Kainas renka GitHub serveris — užtrunka 2–5 min. Galima uždaryti programėlę, baigus atsiųsiu pranešimą.</div></div>
       </div>
@@ -365,6 +381,16 @@ dialog .inp { width: 100%; }
   </div>
   <div class="sheet-c" id="destBody"></div>
   <div class="sheet-f"><button class="btn" id="destClear">Išvalyti</button><button class="btn primary" id="destOk">Gerai</button></div>
+</div>
+
+<!-- Kalendorius -->
+<div id="calBg" class="sheet-bg hidden"></div>
+<div id="calSheet" class="sheet hidden" role="dialog" aria-label="Išvykimo datos">
+  <div class="sheet-h"><div style="margin-right:auto"><h2>Išvykimo datos</h2><div class="hint" id="calTitle" style="margin:2px 0 0">Pažymėk pirmą ir paskutinę dieną</div></div>
+    <button class="btn" id="closeCal">✕</button></div>
+  <div class="cal-wd"><span>Pr</span><span>An</span><span>Tr</span><span>Kt</span><span>Pn</span><span>Št</span><span>Sk</span></div>
+  <div class="sheet-c" id="calBody"></div>
+  <div class="sheet-f"><button class="btn" id="calReset">Iš naujo</button><button class="btn primary" id="calOk">Gerai</button></div>
 </div>
 
 <!-- Išsaugojimo langas -->
@@ -661,6 +687,75 @@ function renderTargets() {
 }
 $("targets").addEventListener("click", ev => { const b = ev.target.closest("[data-i]"); if (b) { TARGETS.splice(+b.dataset.i, 1); renderTargets(); } });
 
+// ---------- lietuviškas kalendorius (savaitė nuo pirmadienio) ----------
+const MON_FULL = ["sausis", "vasaris", "kovas", "balandis", "gegužė", "birželis", "liepa", "rugpjūtis", "rugsėjis", "spalis", "lapkritis", "gruodis"];
+const CAL = { a: null, b: null };
+const dval = id => $(id).value ? d2n($(id).value) : null;
+const fmtDY = n => { const d = new Date(n * DAY); return `${d.getUTCFullYear()} m. ${MON[d.getUTCMonth()]} ${d.getUTCDate()} d.`; };
+function updateCalBtn() {
+  const a = dval("sFrom"), b = dval("sTo");
+  $("openCal").textContent = a && b ? `📅 ${fmtDW(a)} – ${fmtDW(b)}${new Date(a * DAY).getUTCFullYear() !== new Date(b * DAY).getUTCFullYear() ? ` (${new Date(b * DAY).getUTCFullYear()})` : ""}` : "📅 Pasirinkti datas…";
+}
+function calTitle() {
+  $("calTitle").textContent = !CAL.a ? "Pažymėk pirmą išvykimo dieną" : !CAL.b ? `Nuo ${fmtDY(CAL.a)} — dabar pažymėk paskutinę` : `${fmtDY(CAL.a)} – ${fmtDY(CAL.b)} (${CAL.b - CAL.a + 1} d.)`;
+}
+function renderCal() {
+  const t = todayN(), min = t + 1, max = t + 330;
+  const first = new Date(min * DAY), last = new Date(max * DAY);
+  let h = "", y = first.getUTCFullYear(), m = first.getUTCMonth();
+  while (y < last.getUTCFullYear() || (y === last.getUTCFullYear() && m <= last.getUTCMonth())) {
+    const d1 = Math.round(Date.UTC(y, m, 1) / DAY), dn = Math.round(Date.UTC(y, m + 1, 0) / DAY);
+    const lead = (new Date(d1 * DAY).getUTCDay() + 6) % 7;
+    h += `<div class="cal-m" id="cal-${y}-${m}">${MON_FULL[m]} ${y}</div><div class="cal-g">` + "<span></span>".repeat(lead);
+    for (let d = d1; d <= dn; d++) {
+      const wdN = new Date(d * DAY).getUTCDay(), cls = [];
+      if (wdN === 0 || wdN === 6) cls.push("we");
+      if (d === t) cls.push("today");
+      if (CAL.a === d) cls.push("a");
+      if (CAL.b === d || (CAL.a === d && !CAL.b)) cls.push("b");
+      if (CAL.a && CAL.b && d > CAL.a && d < CAL.b) cls.push("in");
+      h += `<button data-d="${d}" class="${cls.join(" ")}" ${d < min || d > max ? "disabled" : ""}>${d - d1 + 1}</button>`;
+    }
+    h += `</div>`;
+    if (++m > 11) { m = 0; y++; }
+  }
+  $("calBody").innerHTML = h;
+  calTitle();
+}
+function openCal() {
+  CAL.a = dval("sFrom"); CAL.b = dval("sTo");
+  renderCal();
+  $("calSheet").classList.remove("hidden"); $("calBg").classList.remove("hidden"); document.body.style.overflow = "hidden";
+  const fd = new Date((CAL.a || todayN()) * DAY);
+  document.getElementById(`cal-${fd.getUTCFullYear()}-${fd.getUTCMonth()}`)?.scrollIntoView({ block: "start" });
+}
+function closeCal(apply) {
+  if (apply && CAL.a) {
+    $("sFrom").value = n2d(CAL.a); $("sTo").value = n2d(CAL.b || CAL.a);
+    cardState.clear(); updateCalBtn(); render();
+  }
+  $("calSheet").classList.add("hidden"); $("calBg").classList.add("hidden"); document.body.style.overflow = "";
+}
+$("openCal").onclick = openCal;
+$("closeCal").onclick = $("calBg").onclick = () => closeCal(false);
+$("calOk").onclick = () => closeCal(true);
+$("calReset").onclick = () => { CAL.a = CAL.b = null; renderCal(); };
+$("calBody").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-d]"); if (!b || b.disabled) return;
+  const d = +b.dataset.d;
+  if (!CAL.a || CAL.b) { CAL.a = d; CAL.b = null; }
+  else if (d < CAL.a) CAL.a = d;
+  else CAL.b = d;
+  // atnaujinam tik klases, kad sąrašas nepašoktų
+  $("calBody").querySelectorAll("button[data-d]").forEach(x => {
+    const n = +x.dataset.d;
+    x.classList.toggle("a", n === CAL.a);
+    x.classList.toggle("b", n === CAL.b || (n === CAL.a && !CAL.b));
+    x.classList.toggle("in", !!(CAL.a && CAL.b && n > CAL.a && n < CAL.b));
+  });
+  calTitle();
+});
+
 // ---------- paieškos paleidimas ----------
 let polling = null;
 $("searchBtn").onclick = async () => {
@@ -745,6 +840,7 @@ function searchForCur() {
   return s;
 }
 function render() {
+  updateCalBtn();
   if (!CUR) { rows = []; $("list").innerHTML = ""; $("summary").textContent = ""; return; }
   const s = searchForCur();
   rows = CUR.E.computeMulti(s);
@@ -963,10 +1059,9 @@ function setupControls() {
   $("lay0").innerHTML = $("lay1").innerHTML = layOpts;
   $("airlines").innerHTML = ["FR", "W6"].map(a => `<button class="chip" data-a="${a}">${esc(alName(a))}</button>`).join("");
   const t = todayN();
-  for (const id of ["sFrom", "sTo"]) { $(id).min = n2d(t + 1); $(id).max = n2d(t + 330); }
   if (!$("sFrom").value) $("sFrom").value = n2d(t + 1);
   if (!$("sTo").value) $("sTo").value = n2d(t + 120);
-  $("sFrom").onchange = $("sTo").onchange = () => { cardState.clear(); render(); };
+  updateCalBtn();
 
   $("view").onclick = ev => { const b = ev.target.closest("button"); if (b) setView(b.dataset.v); };
   $("q").oninput = () => { S.q = $("q").value; changed(); };
