@@ -131,7 +131,7 @@ def get_json(session: requests.Session, method: str, url: str, *, tries: int = 4
             if r.status_code in (400, 404):
                 return None  # tokio maršruto / periodo nėra
             err = f"HTTP {r.status_code}"
-            if r.status_code in (429, 503):
+            if r.status_code in (403, 429, 503):
                 slow = 6  # avialinija riboja užklausų dažnį
         time.sleep(slow * (i + 1))
     if log:
@@ -215,13 +215,18 @@ class Ryanair:
         self.fetched |= routes
         jobs = [(a, b, m) for a, b in sorted(routes) for m in months_between(self.start, self.end)]
         print(f"{label}: {len(routes)} maršrutai, {len(jobs)} užklausos")
-        run_jobs(self._job, jobs, workers=6, label=label)
+        failed = run_jobs(self._job, jobs, workers=6, label=label)
+        if failed:
+            print(f"  {label}: {len(failed)} užklausų nepavyko, po 30 s bandau dar kartą lėčiau")
+            time.sleep(30)
+            run_jobs(self._job, [(*j, True) for j in failed], workers=2, label=f"{label} (pakartotinai)")
 
-    def _job(self, a: str, b: str, m: dt.date) -> None:
+    def _job(self, a: str, b: str, m: dt.date, last_try: bool = False) -> bool:
         d = get_json(self.s, "GET", f"{self.API}/oneWayFares/{a}/{b}/cheapestPerDay",
-                     params={"outboundMonthOfDate": str(m), "currency": "EUR"})
+                     params={"outboundMonthOfDate": str(m), "currency": "EUR"},
+                     pause=1.0 if last_try else 0.0, log=last_try)
         if d is FAIL:
-            return
+            return False
         for f in ((d or {}).get("outbound") or {}).get("fares", []):
             if f.get("unavailable") or f.get("soldOut") or not f.get("price"):
                 continue
@@ -234,6 +239,7 @@ class Ryanair:
                 days = (dt.date.fromisoformat(arr[:10]) - dt.date.fromisoformat(day)).days
                 arr_min = days * 1440 + int(arr[11:13]) * 60 + int(arr[14:16])
             put_fare(a, b, day, f["price"]["value"], "FR", dep[11:16], arr_min, 0)
+        return True
 
 
 # ---------------------------------------------------------------- valiutos
