@@ -54,7 +54,10 @@ jobs:
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 150
-    concurrency: { group: darbas, cancel-in-progress: false }
+    # Paieškos kryptimi vyksta lygiagrečiai (kiekviena savo grupėje); tikrinimai ir plati paieška — po vieną
+    concurrency:
+      group: darbas-${{ inputs.veiksmas == 'kryptis' && inputs.id || inputs.veiksmas || 'tikrinti' }}
+      cancel-in-progress: false
     env:
       SLAPTAZODIS: ${{ secrets.SLAPTAZODIS }}
       VEIKSMAS: ${{ inputs.veiksmas || 'tikrinti' }}
@@ -94,13 +97,31 @@ jobs:
       - name: Įvertinti ir pranešti
         run: node collector/darbas.mjs po
 
+      # Į naujausią šakos versiją perkeliami tik šio paleidimo failai (kiti paleidimai galėjo ją pakeisti)
       - name: Išsaugoti duomenis
         run: |
-          cd data
-          [ -d .git ] || git init --quiet
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout --quiet --orphan naujas
-          git add -A
-          git commit --quiet -m "Duomenys" || exit 0
-          git push --quiet --force "$DATA_URL" naujas:duomenys
+          [ -f data/oro_uostai.json ] && echo "oro_uostai.json" >> build/rasyti.txt
+          touch build/rasyti.txt build/trinti.txt
+          [ -s build/rasyti.txt ] || [ -s build/trinti.txt ] || { echo "Nėra ką išsaugoti."; exit 0; }
+          for i in 1 2 3 4 5; do
+            rm -rf fresh
+            if git ls-remote --exit-code --heads "$DATA_URL" duomenys > /dev/null; then
+              git clone --quiet --depth 1 --branch duomenys "$DATA_URL" fresh
+              base=$(git -C fresh rev-parse HEAD)
+            else
+              mkdir fresh && git -C fresh init --quiet && base=""
+            fi
+            while read -r f; do [ -n "$f" ] && mkdir -p "fresh/$(dirname "$f")" && cp "data/$f" "fresh/$f"; done < build/rasyti.txt
+            while read -r f; do [ -n "$f" ] && rm -f "fresh/$f"; done < build/trinti.txt
+            cd fresh
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git checkout --quiet --orphan naujas
+            git add -A
+            git commit --quiet -m "Duomenys" || exit 0
+            if [ -n "$base" ]; then lease="--force-with-lease=duomenys:$base"; else lease=""; fi
+            if git push --quiet $lease "$DATA_URL" naujas:duomenys; then exit 0; fi
+            cd ..
+            echo "Šaką ką tik pakeitė kitas paleidimas — bandau dar kartą"; sleep $((i * 5))
+          done
+          exit 1

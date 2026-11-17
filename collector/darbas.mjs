@@ -11,7 +11,7 @@
 // DĖMESIO: viešos repozitorijos Actions žurnalas matomas visiems — čia spausdinami tik skaičiai.
 import { readFile, writeFile, mkdir, readdir, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createEngine, defaultSearch, alName, d2n, viaOf } from "../docs/engine.js";
 import { encryptJSON, decryptJSON } from "../docs/crypto.js";
@@ -35,7 +35,18 @@ const fmt = n => { const d = new Date(n * 86400000); return `${MON[d.getUTCMonth
 const eur = v => "€" + (v >= 100 ? Math.round(v) : v.toFixed(2).replace(/\.00$/, ""));
 const today = () => Math.floor(Date.now() / 86400000);
 const readEnc = async f => decryptJSON(await readFile(f, "utf8"), PASS);
-const writeEnc = async (f, obj) => { await mkdir(dirname(f), { recursive: true }); await writeFile(f, await encryptJSON(obj, PASS)); };
+// Ką šis paleidimas įrašė / ištrynė šakoje „duomenys“ — išsaugojant perkeliami TIK šie failai,
+// kad lygiagrečiai vykstantys paleidimai neperrašytų vienas kito rezultatų.
+const WRITTEN = [], DELETED = [];
+const writeEnc = async (f, obj) => {
+  await mkdir(dirname(f), { recursive: true }); await writeFile(f, await encryptJSON(obj, PASS));
+  WRITTEN.push(relative(P.out, f).replaceAll("\\", "/"));
+};
+async function saveManifest() {
+  await mkdir(dirname(P.plan), { recursive: true });
+  await writeFile(join(ROOT, "build", "rasyti.txt"), WRITTEN.map(f => f + "\n").join(""));
+  await writeFile(join(ROOT, "build", "trinti.txt"), DELETED.map(f => f + "\n").join(""));
+}
 const loadStore = async () => existsSync(P.store) ? readEnc(P.store) : { settings: {}, directions: [], tracked: [] };
 
 // ---------------------------------------------------------------- 1. planas
@@ -100,7 +111,7 @@ async function po() {
     // Paliekam 20 naujausių vienkartinių rezultatų
     const dir = join(P.out, "r");
     const files = (await readdir(dir)).filter(f => f.endsWith(".enc")).sort((a, b) => parseInt(b, 36) - parseInt(a, 36));
-    for (const f of files.slice(20)) await rm(join(dir, f));
+    for (const f of files.slice(20)) { await rm(join(dir, f)); DELETED.push(`r/${f}`); }
   } else {
     await writeEnc(join(P.out, "sekami.enc"), DATA);
     const statePath = join(P.out, "state.enc");
@@ -153,5 +164,5 @@ async function po() {
 }
 
 const cmd = process.argv[2];
-(cmd === "planas" ? planas() : cmd === "po" ? po() : Promise.reject(new Error("Komanda: planas | po")))
+(cmd === "planas" ? planas() : cmd === "po" ? po().finally(saveManifest) : Promise.reject(new Error("Komanda: planas | po")))
   .catch(e => { console.error(e.message === "BAD_PASSWORD" ? "Neteisingas slaptažodis" : e); process.exit(1); });

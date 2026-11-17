@@ -283,7 +283,8 @@ dialog .inp { width: 100%; }
         <div class="fld"><button class="btn wide" id="allBtn">Atnaujinti plačią paiešką (~1 val.)</button>
           <div class="hint">Renka kainas iš 5 oro uostų į visas kryptis 4 mėn. į priekį. Naudok retai — tai didelė apkrova.</div></div>
       </div>
-      <div id="status" class="status hidden"><div class="spin"></div><div id="statusText"></div></div>
+      <div id="status" class="status hidden"><div class="spin"></div><div id="statusText" style="flex:1"></div>
+        <button class="btn danger" id="cancelRun">Atšaukti</button></div>
       <div class="summary" id="summary"></div>
       <div id="list"></div>
       <div id="recentBox" class="panel hidden"><h3 style="margin:0 0 6px;font-size:15px">Paskutinės paieškos</h3><div class="recent" id="recent"></div></div>
@@ -496,6 +497,11 @@ async function unlock(pass) {
   setupControls(); syncControls(); renderTargets(); renderRecent(); renderSettings();
   setView(VIEW, true);
   openFromHash();
+  const w = ls.json("sk_waiting", null); // paieška, kuri vyko uždarant programėlę
+  if (w && Date.now() - w.t0 < 3 * 3600e3) {
+    const m = w.title.match(/^kryptis (\w+)/);
+    waitFor(w.title, w.path, w.name, m ? () => openResult(m[1]) : () => { dataCache.delete("visi.enc"); setView("all"); }, w.long);
+  }
   dataFile("oro_uostai.json").then(t => { if (t) AIRPORTS = JSON.parse(t).filter(a => !/All Airports/.test(a.n)); });
 }
 $("loginForm").addEventListener("submit", async ev => {
@@ -533,8 +539,9 @@ async function runStatus(title) {
   const r = await fetch(`${API()}/actions/runs?event=workflow_dispatch&per_page=15`, { headers: ghHeaders(), cache: "no-store" });
   if (!r.ok) return null;
   const run = (await r.json()).workflow_runs.find(x => x.display_title === title);
-  return run ? { status: run.status, conclusion: run.conclusion, url: run.html_url } : null;
+  return run ? { id: run.id, status: run.status, conclusion: run.conclusion, url: run.html_url } : null;
 }
+const RUN_LT = { queued: "eilėje", pending: "laukia eilėje", waiting: "laukia eilėje", requested: "eilėje", in_progress: "renkamos kainos", completed: "baigta" };
 
 // ---------- vaizdas: kryptimi / visur ----------
 async function setView(v, initial) {
@@ -778,23 +785,41 @@ $("allBtn").onclick = async () => {
   if (!(await dispatch("visi", id, ""))) return;
   waitFor(`visi ${id}`, "visi.enc", "plati paieška", () => { dataCache.delete("visi.enc"); setView("all"); }, true);
 };
+let currentRun = null;
 function waitFor(title, path, name, done, long) {
   clearInterval(polling);
   const t0 = Date.now(), st = $("status");
+  currentRun = { title, id: null };
+  ls.set("sk_waiting", JSON.stringify({ title, path, name, long, t0 }));
   st.classList.remove("hidden");
+  const stop = () => { clearInterval(polling); st.classList.add("hidden"); currentRun = null; ls.set("sk_waiting", null); };
   const tick = async () => {
     const min = Math.floor((Date.now() - t0) / 60000);
     const run = await runStatus(title).catch(() => null);
-    const s = !run ? "laukiama eilėje" : run.status === "queued" ? "eilėje" : run.status === "in_progress" ? "renkamos kainos" : run.status;
+    if (run && currentRun) currentRun.id = run.id;
+    const s = !run ? "paleidžiama" : RUN_LT[run.status] || run.status;
     $("statusText").innerHTML = `Ieškoma: <b>${esc(name)}</b> — ${s} (${min} min.)<br><small>${long ? "Užtruks ~1 val." : "Paprastai 2–5 min."} Galima uždaryti programėlę — atsiųsiu pranešimą.</small>`;
     if (run && run.status === "completed") {
-      clearInterval(polling); st.classList.add("hidden");
+      stop();
       if (run.conclusion === "success") { toast("Paieška baigta."); done(); }
+      else if (run.conclusion === "cancelled") toast("Paieška atšaukta.");
       else toast("Paieška nepavyko — bandyk dar kartą vėliau.", 6000);
     }
   };
   tick(); polling = setInterval(tick, 10000);
 }
+$("cancelRun").onclick = async () => {
+  if (!currentRun) return;
+  if (!confirm("Atšaukti šią paiešką?")) return;
+  let id = currentRun.id;
+  if (!id) { const run = await runStatus(currentRun.title).catch(() => null); id = run && run.id; }
+  if (id) {
+    const r = await fetch(`${API()}/actions/runs/${id}/cancel`, { method: "POST", headers: ghHeaders() });
+    if (!r.ok && r.status !== 409) { toast(`Nepavyko atšaukti (GitHub ${r.status}).`); return; }
+  }
+  clearInterval(polling); $("status").classList.add("hidden"); currentRun = null; ls.set("sk_waiting", null);
+  toast("Paieška atšaukta.");
+};
 function cleanS() {
   const { origin, q, only, ...rest } = S; return JSON.parse(JSON.stringify(rest));
 }
