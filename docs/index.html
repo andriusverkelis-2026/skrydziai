@@ -608,11 +608,12 @@ async function openResult(id, quiet) {
   const d = await loadData(`r/${id}.enc`).catch(() => null);
   if (!d) { if (!quiet) toast("Šios paieškos rezultatų nebėra — paleisk iš naujo."); return; }
   ls.set("sk_lastResult", id);
-  CUR = { ...d, label: recent ? recent.name : (d.DATA.targets || []).join(", "), path: `r/${id}.enc`, targets: d.DATA.targets, id };
-  if (recent) {
-    TARGETS = TARGETS.length ? TARGETS : [{ k: recent.targets.join(","), n: recent.name, codes: recent.targets }];
-    $("sFrom").value = recent.start || ""; $("sTo").value = recent.end || "";
-  }
+  const targets = d.DATA.targets || [];
+  const label = recent ? recent.name : targets.map(c => d.E.apName(c)).join(", ");
+  CUR = { ...d, label, path: `r/${id}.enc`, targets, id };
+  TARGETS = [{ k: targets.join(","), n: label, codes: targets }]; renderTargets();
+  $("sFrom").value = (recent && recent.start) || d.DATA.start; $("sTo").value = (recent && recent.end) || d.DATA.end;
+  cardState.clear();
   render();
 }
 function renderRecent() {
