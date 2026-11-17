@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="lt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pigūs skrydžiai</title>
+<meta name="theme-color" content="#2a78d6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Skrydžiai">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f6f6f4; --surface: #fcfcfb; --surface-2: #f0efec; --border: #e3e2de;
+  --text: #0b0b0b; --text-2: #52514e; --muted: #8a8984; --accent: #2a78d6; --accent-ink: #fff;
+  --bar: #2a78d6; --bar-dim: #cde2fb; --grid-line: #ecebe7; --sel: #eb6834; --danger: #d03b3b;
+  --h0: #cde2fb; --h1: #9ec5f4; --h2: #6da7ec; --h3: #3987e5; --h4: #256abf; --h5: #184f95;
+  --ink-light: #0b0b0b; --ink-dark: #ffffff;
+  --nav-h: 60px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #121211; --surface: #1a1a19; --surface-2: #242422; --border: #33332f; --text: #f0efec;
+    --text-2: #c3c2b7; --muted: #8d8c85; --accent: #3987e5; --bar: #3987e5; --bar-dim: #1c3d66;
+    --grid-line: #2a2a27; --sel: #d95926; --danger: #e66767;
+    --h0: #0d366b; --h1: #184f95; --h2: #1c5cab; --h3: #2a78d6; --h4: #5598e7; --h5: #86b6ef;
+    --ink-light: #f0efec; --ink-dark: #0b0b0b;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121211; --surface: #1a1a19; --surface-2: #242422; --border: #33332f; --text: #f0efec;
+  --text-2: #c3c2b7; --muted: #8d8c85; --accent: #3987e5; --bar: #3987e5; --bar-dim: #1c3d66;
+  --grid-line: #2a2a27; --sel: #d95926; --danger: #e66767;
+  --h0: #0d366b; --h1: #184f95; --h2: #1c5cab; --h3: #2a78d6; --h4: #5598e7; --h5: #86b6ef;
+  --ink-light: #f0efec; --ink-dark: #0b0b0b;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom)); }
+button, input, select { font: inherit; color: inherit; }
+.hidden { display: none !important; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+
+/* viršutinė juosta */
+.top { position: sticky; top: 0; z-index: 10; background: var(--bg); border-bottom: 1px solid var(--border);
+  padding-top: env(safe-area-inset-top); }
+.top-in { display: flex; gap: 8px; align-items: center; padding: 10px 0; flex-wrap: wrap; }
+.top h1 { font-size: 18px; margin: 0 auto 0 0; white-space: nowrap; }
+.sel, .inp { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px;
+  min-height: 40px; }
+.sel { max-width: 46vw; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.seg button { border: 0; background: transparent; padding: 8px 12px; min-height: 40px; cursor: pointer; white-space: nowrap; }
+.seg button.on { background: var(--accent); color: var(--accent-ink); }
+.btn { border: 1px solid var(--border); background: var(--surface); border-radius: 10px; padding: 8px 14px;
+  min-height: 40px; cursor: pointer; white-space: nowrap; }
+a.btn { text-decoration: none; color: var(--text); display: inline-flex; align-items: center; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.danger { color: var(--danger); }
+.btn .cnt { display: inline-block; min-width: 20px; border-radius: 10px; background: var(--accent); color: var(--accent-ink);
+  font-size: 12px; padding: 0 6px; margin-left: 4px; }
+.row2 { display: flex; gap: 8px; padding-bottom: 10px; }
+.row2 .inp { flex: 1; min-width: 0; }
+
+/* sąrašas */
+.summary { color: var(--text-2); margin: 10px 0; font-size: 13px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 12px; overflow: hidden; }
+.card-h { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; padding: 12px 14px 4px; }
+.dest { font-weight: 600; font-size: 17px; }
+.dest small { font-weight: 400; color: var(--text-2); font-size: 13px; }
+.price { margin-left: auto; font-weight: 700; font-size: 19px; font-variant-numeric: tabular-nums; }
+.price small { font-weight: 400; color: var(--text-2); font-size: 12px; }
+.best { width: 100%; color: var(--text-2); font-size: 13px; }
+.tag { display: inline-block; font-size: 11px; border: 1px solid var(--border); border-radius: 6px; padding: 0 6px;
+  margin: 2px 0 0 4px; color: var(--text-2); }
+.tag.via { background: var(--bar-dim); border-color: transparent; color: var(--text); }
+.card-b { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 4px 14px 12px; min-height: 150px; }
+@media (max-width: 760px) { .card-b { grid-template-columns: minmax(0, 1fr); } }
+.ctitle { font-size: 12px; color: var(--text-2); margin-bottom: 2px; }
+.chart svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.chart .lbl { fill: var(--muted); font-size: 10px; }
+.chart .gl { stroke: var(--grid-line); stroke-width: 1; }
+.chart rect.b { fill: var(--bar); pointer-events: none; }
+.chart rect.b.hl { fill: var(--sel); }
+.chart rect.hit { fill: transparent; cursor: pointer; }
+@media (hover: hover) { .chart rect.hit:hover + rect.b { fill: var(--sel); } }
+.grid { overflow-x: auto; min-width: 0; -webkit-overflow-scrolling: touch; }
+.grid table { border-collapse: separate; border-spacing: 2px; }
+.grid th { font-weight: 400; color: var(--text-2); padding: 0 2px; white-space: nowrap; font-size: 11px; }
+.grid td { width: 50px; min-width: 46px; height: 34px; text-align: center; border-radius: 6px; position: relative;
+  font-variant-numeric: tabular-nums; cursor: pointer; font-size: 12px; }
+.grid td.na { color: var(--muted); cursor: default; }
+.grid td.sel { outline: 2px solid var(--sel); outline-offset: -1px; }
+.grid td.min { font-weight: 700; }
+.grid td.tr::after { content: ""; position: absolute; top: 3px; right: 3px; width: 5px; height: 5px; border-radius: 50%;
+  background: currentColor; opacity: .75; }
+.nav { border: 1px solid var(--border); background: var(--surface); border-radius: 6px; cursor: pointer;
+  padding: 0 8px; min-height: 28px; min-width: 28px; }
+.legend { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 11px; margin-top: 4px; flex-wrap: wrap; }
+.legend i { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }
+.pick { grid-column: 1 / -1; font-size: 14px; color: var(--text-2); border-top: 1px dashed var(--border); padding-top: 8px; }
+.pick b { color: var(--text); }
+.pick a { color: var(--accent); }
+.legs { margin: 4px 0 8px; padding-left: 20px; }
+.legs li { margin: 4px 0; }
+.lay { color: var(--muted); font-size: 13px; }
+.empty { color: var(--text-2); padding: 40px 0; text-align: center; }
+#tip { position: fixed; pointer-events: none; background: var(--text); color: var(--surface); padding: 6px 8px;
+  border-radius: 6px; font-size: 12px; z-index: 50; display: none; white-space: nowrap; }
+
+/* filtrų lapas */
+.sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 30; }
+.sheet { position: fixed; z-index: 31; background: var(--surface); display: flex; flex-direction: column;
+  inset: auto 0 0 0; max-height: 92vh; border-radius: 18px 18px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+@media (min-width: 761px) { .sheet { inset: 0 0 0 auto; width: 420px; max-height: none; border-radius: 0; } }
+.sheet-h { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.sheet-h h2 { font-size: 17px; margin: 0 auto 0 0; }
+.sheet-c { overflow-y: auto; padding: 8px 16px 16px; }
+.sheet-f { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+.sheet-f .btn { flex: 1; }
+.fld { margin: 14px 0 0; }
+.fld > label, .fld > .lab { display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px; }
+.pair { display: flex; gap: 8px; align-items: center; }
+.pair .inp, .pair .sel { flex: 1; min-width: 0; max-width: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--border); background: var(--surface); border-radius: 18px; padding: 6px 12px; min-height: 36px;
+  cursor: pointer; }
+.chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.check { display: flex; gap: 10px; align-items: center; min-height: 40px; }
+.check input { width: 20px; height: 20px; }
+.hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+/* apatinė navigacija */
+.bnav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--surface); border-top: 1px solid var(--border);
+  display: flex; padding-bottom: env(safe-area-inset-bottom); }
+.bnav button { flex: 1; border: 0; background: transparent; height: var(--nav-h); cursor: pointer; color: var(--muted);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; }
+.bnav button.on { color: var(--accent); }
+.bnav svg { width: 22px; height: 22px; }
+
+/* kiti puslapiai */
+.page { padding: 12px 0 20px; }
+.box { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+.box h3 { margin: 0 0 6px; font-size: 16px; }
+.box p { margin: 6px 0; color: var(--text-2); font-size: 14px; }
+.box .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.ok { color: #0ca30c; } .err { color: var(--danger); }
+code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-size: 13px; word-break: break-all; }
+
+/* prisijungimas */
+.login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.login .box { width: 100%; max-width: 360px; }
+.login .inp { width: 100%; margin: 10px 0; }
+.login .btn { width: 100%; }
+dialog { border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text);
+  width: min(420px, calc(100vw - 32px)); padding: 18px; }
+dialog::backdrop { background: rgba(0,0,0,.35); }
+dialog .inp { width: 100%; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom));
+  background: var(--text); color: var(--surface); padding: 10px 16px; border-radius: 10px; z-index: 60; font-size: 14px;
+  max-width: calc(100vw - 32px); }
+</style>
+</head>
+<body>
+
+<!-- Prisijungimas -->
+<div id="login" class="login hidden">
+  <form class="box" id="loginForm">
+    <h3>Pigūs skrydžiai</h3>
+    <p>Įvesk slaptažodį — duomenys užšifruoti.</p>
+    <input class="inp" type="password" id="pw" autocomplete="current-password" placeholder="Slaptažodis" required>
+    <label class="check"><input type="checkbox" id="remember" checked> Prisiminti šiame įrenginyje</label>
+    <button class="btn primary" type="submit">Atidaryti</button>
+    <p id="loginErr" class="err"></p>
+  </form>
+</div>
+
+<div id="app" class="hidden">
+  <!-- Paieška -->
+  <section id="tab-search">
+    <div class="top"><div class="wrap">
+      <div class="top-in">
+        <h1>Skrydžiai</h1>
+        <select class="sel" id="origin" aria-label="Išvykimas"></select>
+        <div class="seg" id="mode"><button data-v="rt">Į abi puses</button><button data-v="ow">Į vieną</button></div>
+      </div>
+      <div class="row2">
+        <input class="inp" type="search" id="q" placeholder="Kryptis: miestas, šalis">
+        <button class="btn" id="openFilters">Filtrai<span class="cnt hidden" id="fcnt"></span></button>
+        <button class="btn" id="saveBtn" title="Išsaugoti paiešką">☆</button>
+      </div>
+    </div></div>
+    <div class="wrap">
+      <div class="summary" id="summary"></div>
+      <div id="list"></div>
+    </div>
+  </section>
+
+  <!-- Išsaugotos -->
+  <section id="tab-saved" class="hidden">
+    <div class="top"><div class="wrap"><div class="top-in"><h1>Išsaugotos paieškos</h1></div></div></div>
+    <div class="wrap page" id="savedList"></div>
+  </section>
+
+  <!-- Nustatymai -->
+  <section id="tab-settings" class="hidden">
+    <div class="top"><div class="wrap"><div class="top-in"><h1>Nustatymai</h1></div></div></div>
+    <div class="wrap page">
+      <div class="box">
+        <h3>Pranešimai telefone (ntfy)</h3>
+        <p>1. Įsidiek programėlę <b>ntfy</b> (Google Play / App Store).<br>2. Joje spausk „+“ ir įvesk temą:</p>
+        <p><code id="ntfyTopic">—</code></p>
+        <div class="acts"><a class="btn" id="ntfyLink" target="_blank" rel="noopener">Atidaryti ntfy</a>
+          <button class="btn" id="ntfyTest">Siųsti bandomąjį pranešimą</button></div>
+        <p class="hint">Kainos tikrinamos kasdien ~8:00 ir ~20:00, taip pat iškart išsaugojus paiešką. Apie tą pačią kryptį primenama tik kai kaina nukrenta.</p>
+      </div>
+      <div class="box">
+        <h3>GitHub raktas paieškoms išsaugoti</h3>
+        <p id="ghStatus">Raktas nenustatytas — paieškas matysi, bet išsaugoti negalėsi.</p>
+        <input class="inp" type="password" id="ghToken" placeholder="github_pat_..." style="width:100%">
+        <div class="acts"><button class="btn primary" id="ghSave">Išsaugoti raktą</button><button class="btn danger" id="ghClear">Pašalinti</button></div>
+        <p class="hint">Raktas saugomas tik šiame įrenginyje. Jis turi turėti teisę „Contents: Read and write“ tik repozitorijai <code id="repoName"></code>.</p>
+      </div>
+      <div class="box">
+        <h3>Programėlė</h3>
+        <p id="dataInfo"></p>
+        <p><b>Įdiegti į telefoną:</b> Android (Chrome) — meniu ⋮ → „Įdiegti programą“; iPhone (Safari) — „Bendrinti“ → „Į pradžios ekraną“.</p>
+        <div class="acts"><button class="btn hidden" id="installBtn">Įdiegti</button><button class="btn danger" id="logout">Atsijungti</button></div>
+      </div>
+    </div>
+  </section>
+
+  <nav class="bnav">
+    <button data-tab="search" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Paieška</button>
+    <button data-tab="saved"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>Išsaugotos</button>
+    <button data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Nustatymai</button>
+  </nav>
+</div>
+
+<!-- Filtrai -->
+<div id="sheetBg" class="sheet-bg hidden"></div>
+<div id="sheet" class="sheet hidden" role="dialog" aria-label="Filtrai">
+  <div class="sheet-h"><h2>Filtrai</h2><button class="btn" id="closeFilters">✕</button></div>
+  <div class="sheet-c">
+    <div class="fld" id="f-tr"><span class="lab">Skrydžiai</span>
+      <div class="seg" id="tr"><button data-v="0">Tik tiesioginiai</button><button data-v="1">Su persėdimu</button></div>
+      <div class="hint">Persėdimai ieškomi tik į šiltas / egzotines kryptis, 3–24 val. tarp skrydžių.</div></div>
+    <div class="fld"><span class="lab">Greiti pasirinkimai</span>
+      <div class="chips" id="presets">
+        <button class="chip" data-p="weekend">Savaitgalis (Kt/Pn → Sk/Pr)</button>
+        <button class="chip" data-p="long">Atostogos (7–14 n.)</button>
+        <button class="chip" data-p="any">Bet kurios dienos</button>
+      </div></div>
+    <div class="fld rt-only"><span class="lab">Naktų skaičius</span>
+      <div class="pair"><input class="inp" type="number" id="nmin" min="1" max="30" inputmode="numeric"> – <input class="inp" type="number" id="nmax" min="1" max="30" inputmode="numeric"></div></div>
+    <div class="fld"><span class="lab">Išvykimo datos</span>
+      <div class="pair"><input class="inp" type="date" id="dfrom"> – <input class="inp" type="date" id="dto"></div></div>
+    <div class="fld"><span class="lab">Išvykimo savaitės dienos</span><div class="chips wd" id="outDays"></div></div>
+    <div class="fld rt-only"><span class="lab">Grįžimo savaitės dienos</span><div class="chips wd" id="backDays"></div></div>
+    <div class="fld"><span class="lab">Išskridimo laikas pirmyn</span>
+      <div class="pair"><select class="sel" id="ot0"></select> – <select class="sel" id="ot1"></select></div></div>
+    <div class="fld rt-only"><span class="lab">Išskridimo laikas atgal</span>
+      <div class="pair"><select class="sel" id="bt0"></select> – <select class="sel" id="bt1"></select></div></div>
+    <div class="fld"><label for="maxp">Didžiausia kaina visai kelionei, €</label>
+      <input class="inp" type="number" id="maxp" min="0" step="5" inputmode="numeric" placeholder="be ribos" style="width:100%"></div>
+    <div class="fld"><span class="lab">Avialinijos</span><div class="chips" id="airlines"></div>
+      <div class="hint">Nieko nepažymėjus — visos.</div></div>
+    <div class="fld"><label class="check"><input type="checkbox" id="warm"> Tik šiltos / egzotinės kryptys</label></div>
+    <div class="fld"><span class="lab">Rūšiuoti</span>
+      <div class="seg" id="sort"><button data-v="p">Pagal kainą</button><button data-v="n">Pagal pavadinimą</button></div></div>
+  </div>
+  <div class="sheet-f"><button class="btn" id="resetFilters">Išvalyti</button><button class="btn primary" id="applyFilters">Rodyti</button></div>
+</div>
+
+<!-- Išsaugojimo langas -->
+<dialog id="saveDlg">
+  <form method="dialog" id="saveForm">
+    <h3 style="margin-top:0">Išsaugoti paiešką</h3>
+    <div class="fld"><label for="sName">Pavadinimas</label><input class="inp" id="sName" required></div>
+    <div class="fld"><label class="check"><input type="checkbox" id="sNotify" checked> Pranešti į telefoną</label></div>
+    <div class="fld"><label for="sMax">Kai kaina ne didesnė nei, €</label><input class="inp" type="number" id="sMax" min="1" inputmode="numeric"></div>
+    <p class="hint" id="sHint"></p>
+    <div class="acts" style="display:flex;gap:8px;margin-top:14px"><button class="btn" value="cancel" formnovalidate>Atšaukti</button><button class="btn primary" value="ok" id="sOk">Išsaugoti</button></div>
+  </form>
+</dialog>
+
+<div id="tip"></div>
+<div id="toast" class="toast hidden"></div>
+
+<script type="module">
+import { createEngine, defaultSearch, d2n, n2d, weekday, hm, alName, bookUrl, route, viaOf } from "./engine.js";
+import { encryptJSON, decryptJSON } from "./crypto.js";
+
+// ---------- pagalbinės ----------
+const $ = id => document.getElementById(id);
+const DAY = 86400000;
+const MON = ["saus.","vas.","kov.","bal.","geg.","birž.","liep.","rugp.","rugs.","spal.","lapkr.","gruod."];
+const WD = ["Sk","Pr","An","Tr","Kt","Pn","Št"];
+const WD_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const wd = n => WD[weekday(n)];
+const fmtD = n => { const d = new Date(n * DAY); return `${MON[d.getUTCMonth()]} ${d.getUTCDate()}`; };
+const fmtDW = n => `${fmtD(n)}, ${wd(n)}`;
+const eur = v => "€" + (v >= 100 ? Math.round(v) : v.toFixed(2).replace(/\.00$/, ""));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const clock = m => { m = ((m % 1440) + 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; };
+const dur = m => `${Math.floor(m / 60)} val.${m % 60 ? " " + (m % 60) + " min" : ""}`;
+const ls = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
+};
+function toast(msg, ms = 3500) {
+  const t = $("toast"); t.textContent = msg; t.classList.remove("hidden");
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.add("hidden"), ms);
+}
+
+// GitHub repozitorija nustatoma iš adreso: <savininkas>.github.io/<repo>/
+const REPO = (() => {
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+  if (m) return { owner: m[1], repo: location.pathname.split("/").filter(Boolean)[0] };
+  const s = ls.get("sk_repo"); if (s) { const [owner, repo] = s.split("/"); return { owner, repo }; }
+  return null;
+})();
+
+// ---------- būsena ----------
+let PASS = null, DATA = null, E = null, S = null;
+let STORE = { settings: {}, searches: [] }, STORE_SHA = null;
+const cardState = new Map();
+
+// ---------- prisijungimas ----------
+async function unlock(pass) {
+  const res = await fetch("data.enc", { cache: "no-store" });
+  if (!res.ok) throw new Error("Duomenų failas nerastas");
+  DATA = await decryptJSON(await res.text(), pass);
+  PASS = pass;
+  E = createEngine(DATA);
+  const saved = ls.get("sk_last");
+  S = { ...defaultSearch(DATA), ...(saved ? JSON.parse(saved) : {}) };
+  if (!DATA.origins.includes(S.origin)) S.origin = DATA.origins[0];
+  $("login").classList.add("hidden"); $("app").classList.remove("hidden");
+  setupControls();
+  syncControls();
+  render();
+  loadStore().then(() => { renderSaved(); renderSettings(); openFromHash(); });
+  renderSettings();
+}
+$("loginForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  $("loginErr").textContent = "Tikrinama…";
+  try {
+    await unlock($("pw").value);
+    if ($("remember").checked) ls.set("sk_pw", $("pw").value);
+    $("loginErr").textContent = "";
+  } catch (e) {
+    $("loginErr").textContent = e.message === "BAD_PASSWORD" ? "Neteisingas slaptažodis." : "Klaida: " + e.message;
+  }
+});
+(async () => {
+  const p = ls.get("sk_pw");
+  if (p) { try { await unlock(p); return; } catch { ls.set("sk_pw", null); } }
+  $("login").classList.remove("hidden");
+})();
+
+// ---------- išsaugotos paieškos (GitHub) ----------
+const ghHeaders = () => {
+  const t = ls.get("sk_gh");
+  return { Accept: "application/vnd.github+json", ...(t ? { Authorization: `Bearer ${t}` } : {}) };
+};
+const ghUrl = () => `https://api.github.com/repos/${REPO.owner}/${REPO.repo}/contents/docs/paieskos.enc`;
+async function loadStore() {
+  try {
+    let text;
+    if (REPO) {
+      const r = await fetch(ghUrl() + "?ref=main&t=" + Date.now(), { headers: ghHeaders(), cache: "no-store" });
+      if (r.ok) { const j = await r.json(); STORE_SHA = j.sha; text = atob(j.content.replace(/\n/g, "")); }
+    }
+    if (!text) { const r = await fetch("paieskos.enc", { cache: "no-store" }); if (r.ok) text = await r.text(); }
+    if (text) STORE = await decryptJSON(text, PASS);
+    STORE.settings ||= {}; STORE.searches ||= [];
+  } catch (e) { console.warn("Paieškų nepavyko įkelti", e); }
+}
+async function saveStore(msg) {
+  if (!REPO || !ls.get("sk_gh")) { toast("Pirma nustatymuose įvesk GitHub raktą."); showTab("settings"); return false; }
+  const body = { message: msg, content: btoa(await encryptJSON(STORE, PASS)), ...(STORE_SHA ? { sha: STORE_SHA } : {}) };
+  const r = await fetch(ghUrl(), { method: "PUT", headers: { ...ghHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (r.status === 409 || r.status === 422) { // kažkas pakeitė tarpe — perkraunam ir bandom dar kartą
+    const keep = STORE; await loadStore(); STORE = { ...STORE, ...keep };
+    return saveStore(msg);
+  }
+  if (!r.ok) { toast(`Nepavyko išsaugoti (GitHub ${r.status}). Patikrink raktą.`); return false; }
+  STORE_SHA = (await r.json()).content.sha;
+  return true;
+}
+
+// ---------- valdikliai ----------
+let controlsReady = false;
+function setupControls() {
+  if (controlsReady) return; controlsReady = true;
+  $("origin").innerHTML = DATA.origins.filter(o => E.fares[o]).map(o => `<option value="${o}">${esc(E.apName(o))} (${o})</option>`).join("");
+  for (const id of ["outDays", "backDays"])
+    $(id).innerHTML = WD_ORDER.map(d => `<button class="chip" data-d="${d}">${WD[d]}</button>`).join("");
+  const hours = [...Array(25)].map((_, h) => `<option value="${h}">${String(h).padStart(2, "0")}:00</option>`).join("");
+  for (const id of ["ot0", "ot1", "bt0", "bt1"]) $(id).innerHTML = hours;
+  $("airlines").innerHTML = E.airlinesPresent.map(a => `<button class="chip" data-a="${a}">${esc(alName(a))}</button>`).join("");
+  for (const id of ["dfrom", "dto"]) { $(id).min = DATA.start; $(id).max = DATA.end; }
+  if (!DATA.transfers) $("f-tr").classList.add("hidden");
+
+  $("origin").onchange = () => { S.origin = $("origin").value; changed(); };
+  $("q").oninput = () => { S.q = $("q").value; changed(); };
+  segClick("mode", v => S.mode = v); segClick("tr", v => S.tr = +v); segClick("sort", v => S.sort = v);
+  for (const id of ["outDays", "backDays"]) $(id).onclick = ev => {
+    const b = ev.target.closest("[data-d]"); if (!b) return;
+    const d = +b.dataset.d, arr = S[id]; const i = arr.indexOf(d);
+    i >= 0 ? arr.splice(i, 1) : arr.push(d); changed();
+  };
+  $("airlines").onclick = ev => {
+    const b = ev.target.closest("[data-a]"); if (!b) return;
+    const i = S.airlines.indexOf(b.dataset.a); i >= 0 ? S.airlines.splice(i, 1) : S.airlines.push(b.dataset.a); changed();
+  };
+  $("presets").onclick = ev => {
+    const p = ev.target.closest("[data-p]"); if (!p) return;
+    if (p.dataset.p === "weekend") Object.assign(S, { mode: "rt", outDays: [4, 5], backDays: [0, 1], nmin: 2, nmax: 4 });
+    if (p.dataset.p === "long") Object.assign(S, { mode: "rt", outDays: [], backDays: [], nmin: 7, nmax: 14 });
+    if (p.dataset.p === "any") Object.assign(S, { outDays: [], backDays: [] });
+    changed();
+  };
+  const num = (id, key, fn) => $(id).onchange = () => { S[key] = fn($(id).value); changed(); };
+  num("nmin", "nmin", v => Math.max(1, Math.min(30, +v || 1)));
+  num("nmax", "nmax", v => Math.max(1, Math.min(30, +v || 1)));
+  num("dfrom", "dfrom", v => v); num("dto", "dto", v => v);
+  num("maxp", "maxp", v => v === "" ? null : +v);
+  $("ot0").onchange = $("ot1").onchange = () => { S.outTime = [+$("ot0").value, +$("ot1").value]; changed(); };
+  $("bt0").onchange = $("bt1").onchange = () => { S.backTime = [+$("bt0").value, +$("bt1").value]; changed(); };
+  $("warm").onchange = () => { S.warm = $("warm").checked; changed(); };
+
+  $("openFilters").onclick = () => toggleSheet(true);
+  $("closeFilters").onclick = $("applyFilters").onclick = $("sheetBg").onclick = () => toggleSheet(false);
+  $("resetFilters").onclick = () => { S = { ...defaultSearch(DATA), origin: S.origin, mode: S.mode }; changed(); };
+  $("saveBtn").onclick = openSaveDialog;
+  document.querySelectorAll(".bnav button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+}
+function segClick(id, fn) {
+  $(id).onclick = ev => { const b = ev.target.closest("button"); if (!b) return; fn(b.dataset.v); changed(); };
+}
+function syncControls() {
+  if (S.nmax < S.nmin) S.nmax = S.nmin;
+  $("origin").value = S.origin; $("q").value = S.q || "";
+  const seg = (id, v) => $(id).querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === String(v)));
+  seg("mode", S.mode); seg("tr", S.tr); seg("sort", S.sort);
+  for (const id of ["outDays", "backDays"]) $(id).querySelectorAll("[data-d]").forEach(b => b.classList.toggle("on", S[id].includes(+b.dataset.d)));
+  $("airlines").querySelectorAll("[data-a]").forEach(b => b.classList.toggle("on", S.airlines.includes(b.dataset.a)));
+  $("nmin").value = S.nmin; $("nmax").value = S.nmax;
+  $("dfrom").value = S.dfrom || DATA.start; $("dto").value = S.dto || DATA.end;
+  $("maxp").value = S.maxp ?? "";
+  $("ot0").value = S.outTime[0]; $("ot1").value = S.outTime[1]; $("bt0").value = S.backTime[0]; $("bt1").value = S.backTime[1];
+  $("warm").checked = !!S.warm;
+  document.querySelectorAll(".rt-only").forEach(e => e.classList.toggle("hidden", S.mode !== "rt"));
+  const n = activeFilters();
+  $("fcnt").textContent = n; $("fcnt").classList.toggle("hidden", !n);
+}
+function activeFilters() {
+  const d = defaultSearch(DATA); let n = 0;
+  if (S.tr !== d.tr) n++;
+  if (S.mode === "rt" && (S.nmin !== d.nmin || S.nmax !== d.nmax)) n++;
+  if ((S.dfrom && S.dfrom !== DATA.start) || (S.dto && S.dto !== DATA.end)) n++;
+  if (S.outDays.length) n++; if (S.mode === "rt" && S.backDays.length) n++;
+  if (S.outTime[0] > 0 || S.outTime[1] < 24) n++; if (S.mode === "rt" && (S.backTime[0] > 0 || S.backTime[1] < 24)) n++;
+  if (S.maxp != null) n++; if (S.airlines.length) n++; if (S.warm) n++;
+  return n;
+}
+let renderT;
+function changed() {
+  syncControls();
+  ls.set("sk_last", JSON.stringify(S));
+  clearTimeout(renderT); renderT = setTimeout(render, 120);
+}
+function toggleSheet(on) {
+  $("sheet").classList.toggle("hidden", !on); $("sheetBg").classList.toggle("hidden", !on);
+  document.body.style.overflow = on ? "hidden" : "";
+}
+function showTab(t) {
+  for (const x of ["search", "saved", "settings"]) $("tab-" + x).classList.toggle("hidden", x !== t);
+  document.querySelectorAll(".bnav button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+  if (t === "saved") renderSaved();
+  if (t === "settings") renderSettings();
+  window.scrollTo(0, 0);
+}
+
+// ---------- paieškos rezultatai ----------
+let rows = [];
+function describe(s) {
+  const p = [`${E.apName(s.origin)}`, s.mode === "rt" ? `${s.nmin}–${s.nmax} n.` : "į vieną pusę"];
+  if (s.tr) p.push("su persėdimais");
+  if (s.outDays.length) p.push(`išvyk. ${WD_ORDER.filter(d => s.outDays.includes(d)).map(d => WD[d]).join("/")}`);
+  if (s.mode === "rt" && s.backDays.length) p.push(`grįž. ${WD_ORDER.filter(d => s.backDays.includes(d)).map(d => WD[d]).join("/")}`);
+  if (s.outTime[0] > 0 || s.outTime[1] < 24) p.push(`pirmyn ${s.outTime[0]}–${s.outTime[1]} val.`);
+  if (s.mode === "rt" && (s.backTime[0] > 0 || s.backTime[1] < 24)) p.push(`atgal ${s.backTime[0]}–${s.backTime[1]} val.`);
+  if (s.warm) p.push("šiltos kryptys");
+  if (s.airlines && s.airlines.length) p.push(s.airlines.map(alName).join(", "));
+  if (s.maxp != null) p.push(`iki €${s.maxp}`);
+  if (s.q) p.push(`„${s.q}“`);
+  const [a, b] = E.range(s); p.push(`${fmtD(a)}–${fmtD(b)}`);
+  return p.join(" · ");
+}
+function render() {
+  rows = E.compute(S);
+  $("summary").textContent = `${rows.length} kryptys · ${describe(S)}`;
+  const list = $("list");
+  if (!rows.length) { list.innerHTML = `<div class="empty">Pagal šiuos filtrus skrydžių nerasta.<br>Pabandyk praplėsti datas ar kainos ribą.</div>`; return; }
+  list.innerHTML = rows.map((a, i) => {
+    const b = a.best, its = [b.o, b.b].filter(Boolean);
+    const als = [...new Set(its.flatMap(it => it.legs.map(l => l.f[1])))].map(x => `<span class="tag">${esc(alName(x))}</span>`).join("");
+    const vias = [...new Set(its.map(viaOf).filter(Boolean))].map(v => `<span class="tag via">per ${esc(E.apName(v))}</span>`).join("");
+    const when = S.mode === "rt" ? `${fmtDW(b.d)} → ${fmtDW(b.r)} (${b.r - b.o.arrDay} n.)` : fmtDW(b.d);
+    return `<section class="card" data-i="${i}">
+      <div class="card-h"><span class="dest">${esc(E.apName(a.dest))} <small>${esc(E.apCountry(a.dest))} · ${a.dest}</small></span>
+        <span class="price"><small>nuo </small>${eur(b.total)}</span>
+        <span class="best">${when}${vias}${als}</span></div>
+      <div class="card-b"></div></section>`;
+  }).join("");
+  list.querySelectorAll(".card").forEach((c, i) => i < 3 ? fillCard(c) : io.observe(c));
+}
+const io = new IntersectionObserver(es => {
+  for (const e of es) if (e.isIntersecting && !e.target.dataset.filled) fillCard(e.target);
+}, { rootMargin: "500px" });
+
+const skey = () => JSON.stringify([S.origin, S.mode, S.tr, S.nmin, S.nmax, S.dfrom, S.dto, S.outDays, S.backDays, S.outTime, S.backTime, S.airlines]);
+function ensureState(a) {
+  let cs = cardState.get(a.dest);
+  if (!cs || cs.key !== skey()) {
+    const b = a.best, [lo] = E.range(S), gx = Math.max(lo, b.d - 3);
+    cs = { key: skey(), gx, gy: Math.max(gx + 1, (b.r || b.d) - 3), month: d2n(n2d(b.d).slice(0, 8) + "01"), pick: null };
+    cardState.set(a.dest, cs);
+  }
+  return cs;
+}
+function fillCard(card) {
+  const a = rows[+card.dataset.i]; if (!a) return;
+  const cs = ensureState(a);
+  card.querySelector(".card-b").innerHTML =
+    `<div class="chart"><div class="ctitle">Kainų diagrama — ${S.mode === "rt" ? "pigiausia kelionė pagal išvykimo dieną" : "kaina pagal dieną"}</div>${chartSVG(a, cs)}</div>
+     <div class="grid">${S.mode === "rt" ? gridRT(a, cs) : gridOW(a, cs)}</div>
+     ${cs.pick ? `<div class="pick">${pickHTML(a, cs)}</div>` : ""}`;
+  card.dataset.filled = "1";
+}
+
+function niceMax(v) { const p = Math.pow(10, Math.floor(Math.log10(v))), m = v / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p; }
+function chartSVG(a, cs) {
+  const W = 640, H = 150, L = 34, R = 6, T = 14, B = 20, [lo, hi] = E.range(S), span = hi - lo + 1;
+  const tot = a.days.map(e => e.total).sort((x, y) => x - y);
+  const top = niceMax(tot[Math.floor((tot.length - 1) * 0.95)] * 1.05);
+  const bw = (W - L - R) / span, y = v => T + (H - T - B) * (1 - v / top);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Kainų diagrama">`;
+  for (const g of [0, top / 2, top])
+    s += `<line class="gl" x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}"/><text class="lbl" x="${L - 4}" y="${y(g) + 3}" text-anchor="end">€${Math.round(g)}</text>`;
+  for (let d = lo; d <= hi; d++) {
+    const dt = new Date(d * DAY);
+    if (dt.getUTCDate() === 1 || d === lo) s += `<text class="lbl" x="${L + (d - lo) * bw + 1}" y="${H - 6}">${MON[dt.getUTCMonth()]}</text>`;
+  }
+  for (const e of a.days) {
+    const x = L + (e.d - lo) * bw, w = Math.max(1.5, bw - (bw > 4 ? 2 : 0.5)), h = Math.max(2, y(0) - y(Math.min(e.total, top)));
+    s += `<rect class="hit" data-d="${e.d}" x="${x - 1}" y="${T}" width="${bw + 1}" height="${H - T - B}"/>`;
+    s += `<rect class="b${cs.pick && cs.pick.d === e.d ? " hl" : ""}" x="${x}" y="${y(0) - h}" width="${w}" height="${h}" rx="${Math.min(2, w / 2)}"/>`;
+  }
+  return s + "</svg>";
+}
+function shade(v, sorted) {
+  const lo = sorted[0], hi = sorted[sorted.length - 1]; let i = 5;
+  if (hi > lo) { const u = [...new Set(sorted)]; i = 5 - Math.min(5, Math.floor(u.indexOf(v) / Math.max(1, u.length - 1) * 6)); }
+  return `background:var(--h${i});color:var(${i >= 3 ? "--ink-dark" : "--ink-light"})`;
+}
+const legend = n => !n ? `<div class="legend">Šiame lange kainų nėra — naudok rodykles</div>`
+  : `<div class="legend">pigiau ${[5,4,3,2,1,0].map(i => `<i style="background:var(--h${i})"></i>`).join("")} brangiau${S.tr ? " · taškas = su persėdimu" : ""}</div>`;
+function gridRT(a, cs) {
+  const cols = [...Array(7)].map((_, i) => cs.gx + i), rws = [...Array(7)].map((_, i) => cs.gy + i);
+  const od = S.outDays.length ? new Set(S.outDays) : null, bd = S.backDays.length ? new Set(S.backDays) : null;
+  const ok = (d, r) => {
+    if ((od && !od.has(weekday(d))) || (bd && !bd.has(weekday(r)))) return null;
+    const o = a.out.get(d), b = a.back && a.back.get(r); return o && b && r > o.arrDay ? [o, b] : null;
+  };
+  const cells = [];
+  for (const r of rws) for (const d of cols) { const x = ok(d, r); if (x) cells.push(x[0].p + x[1].p); }
+  cells.sort((x, y) => x - y);
+  let h = `<div class="ctitle">Datų tinklelis — stulpeliai: išvykimas, eilutės: grįžimas</div><table><tr>
+    <th><button class="nav" data-nav="x-7" aria-label="Ankstesnė savaitė">‹</button> <button class="nav" data-nav="x7" aria-label="Kita savaitė">›</button></th>`;
+  for (const d of cols) h += `<th>${fmtD(d)}<br>${wd(d)}</th>`;
+  h += `</tr>`;
+  rws.forEach((r, ri) => {
+    const nav = ri === 0 ? `<button class="nav" data-nav="y-7" aria-label="Anksčiau grįžti">˄</button> ` : ri === 6 ? `<button class="nav" data-nav="y7" aria-label="Vėliau grįžti">˅</button> ` : "";
+    h += `<tr><th style="text-align:right">${nav}${fmtD(r)} ${wd(r)}</th>`;
+    for (const d of cols) {
+      const x = ok(d, r);
+      if (!x) { h += `<td class="na">${r > d ? "·" : ""}</td>`; continue; }
+      const t = x[0].p + x[1].p, tr = x[0].legs.length > 1 || x[1].legs.length > 1;
+      const sel = cs.pick && cs.pick.d === d && cs.pick.r === r ? " sel" : "";
+      h += `<td class="${t === cells[0] ? "min" : ""}${sel}${tr ? " tr" : ""}" style="${shade(t, cells)}" data-d="${d}" data-r="${r}">${eur(t)}</td>`;
+    }
+    h += `</tr>`;
+  });
+  return h + `</table>` + legend(cells.length);
+}
+function gridOW(a, cs) {
+  const first = new Date(cs.month * DAY), y = first.getUTCFullYear(), m = first.getUTCMonth();
+  const last = Math.round(Date.UTC(y, m + 1, 0) / DAY), lead = (first.getUTCDay() + 6) % 7;
+  const od = S.outDays.length ? new Set(S.outDays) : null;
+  const get = d => (od && !od.has(weekday(d))) ? null : a.out.get(d);
+  const vals = []; for (let d = cs.month; d <= last; d++) { const o = get(d); if (o) vals.push(o.p); }
+  vals.sort((x, y) => x - y);
+  let h = `<div class="ctitle"><button class="nav" data-nav="m-1" aria-label="Ankstesnis mėnuo">‹</button>
+    <b style="color:var(--text)">${MON[m].replace(".", "")} ${y}</b> <button class="nav" data-nav="m1" aria-label="Kitas mėnuo">›</button></div><table><tr>`;
+  for (const d of WD_ORDER) h += `<th>${WD[d]}</th>`;
+  h += `</tr><tr>` + `<td class="na"></td>`.repeat(lead);
+  let col = lead;
+  for (let d = cs.month; d <= last; d++, col++) {
+    if (col && col % 7 === 0) h += `</tr><tr>`;
+    const o = get(d), day = new Date(d * DAY).getUTCDate();
+    if (!o) { h += `<td class="na">${day}</td>`; continue; }
+    const sel = cs.pick && cs.pick.d === d ? " sel" : "";
+    h += `<td class="${o.p === vals[0] ? "min" : ""}${sel}${o.legs.length > 1 ? " tr" : ""}" style="${shade(o.p, vals)}" data-d="${d}"><span style="opacity:.7;font-size:10px">${day}</span><br>${eur(o.p)}</td>`;
+  }
+  return h + `</tr></table>` + legend(vals.length);
+}
+function legsHTML(it, word) {
+  let h = `<b>${word}</b> · ${eur(it.p)}<ol class="legs">`;
+  it.legs.forEach((l, i) => {
+    const f = l.f, arr = f[3];
+    const arrTxt = arr == null ? "" : ` → ${f[4] ? "~" : ""}${clock(arr)}${arr >= 1440 ? " (+1 d.)" : ""}`;
+    h += `<li><b>${fmtDW(l.d)} ${f[2] || ""}${arrTxt}</b><br>${esc(E.apName(l.from))} → ${esc(E.apName(l.to))} · ${esc(alName(f[1]))} · <b>${eur(f[0])}</b> · <a href="${bookUrl(f[1], l.from, l.to, l.d)}" target="_blank" rel="noopener">užsakyti ↗</a>`;
+    const nx = it.legs[i + 1];
+    if (nx) {
+      const gap = nx.d * 1440 + hm(nx.f[2]) - E.legArr(l), night = Math.floor(E.legArr(l) / 1440) !== nx.d;
+      h += `<div class="lay">Persėdimas ${esc(E.apName(l.to))}: ${dur(gap)}${night ? " — reikės nakvoti" : ""}${f[4] ? " (atvykimo laikas apskaičiuotas)" : ""}</div>`;
+    }
+    h += `</li>`;
+  });
+  return h + `</ol>`;
+}
+function pickHTML(a, cs) {
+  const p = cs.pick, o = a.out.get(p.d); if (!o) return "";
+  let h = legsHTML(o, "Pirmyn"), multi = o.legs.length > 1;
+  if (p.r != null) {
+    const b = a.back.get(p.r); if (!b) return h;
+    multi ||= b.legs.length > 1;
+    h += legsHTML(b, "Atgal") + `Viso <b>${eur(o.p + b.p)}</b> · ${p.r - o.arrDay} n. vietoje`;
+  }
+  return h + `<div class="hint">Kainos be registruoto bagažo, gali būti pasikeitusios.${multi ? " Persėdimai — atskiri bilietai: vėluojant į antrą skrydį nespėjus, avialinija neatlygins." : ""}</div>`;
+}
+
+// paspaudimai kortelėse
+$("list").addEventListener("click", ev => {
+  const card = ev.target.closest(".card"); if (!card) return;
+  const a = rows[+card.dataset.i], cs = cardState.get(a.dest); if (!cs) return;
+  const nav = ev.target.closest("[data-nav]");
+  if (nav) {
+    const v = nav.dataset.nav, ax = v[0], step = +v.slice(1);
+    if (ax === "x") { cs.gx += step; cs.gy += step; }
+    if (ax === "y") cs.gy = Math.max(cs.gx + 1, cs.gy + step);
+    if (ax === "m") { const d = new Date(cs.month * DAY); cs.month = Math.round(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + step, 1) / DAY); }
+    return fillCard(card);
+  }
+  const hit = ev.target.closest("rect.hit");
+  if (hit) {
+    const e = a.days.find(x => x.d === +hit.dataset.d);
+    cs.pick = { d: e.d, r: e.r }; cs.gx = Math.max(E.range(S)[0], e.d - 3);
+    if (e.r) cs.gy = Math.max(cs.gx + 1, e.r - 3);
+    cs.month = d2n(n2d(e.d).slice(0, 8) + "01");
+    fillCard(card); card.querySelector(".pick")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    return;
+  }
+  const td = ev.target.closest("td[data-d]");
+  if (td) {
+    cs.pick = { d: +td.dataset.d, r: td.dataset.r ? +td.dataset.r : null }; fillCard(card);
+    card.querySelector(".pick")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+});
+const tip = $("tip");
+$("list").addEventListener("mousemove", ev => {
+  const t = ev.target.closest("rect.hit");
+  if (!t || !matchMedia("(hover: hover)").matches) { tip.style.display = "none"; return; }
+  const a = rows[+t.closest(".card").dataset.i], e = a.days.find(x => x.d === +t.dataset.d);
+  tip.innerHTML = S.mode === "rt"
+    ? `<b>${eur(e.total)}</b> · ${fmtDW(e.d)} → ${fmtDW(e.r)} (${e.r - e.o.arrDay} n.)<br>${route(e.o)} ${eur(e.o.p)} · ${route(e.b)} ${eur(e.b.p)}`
+    : `<b>${eur(e.total)}</b> · ${fmtDW(e.d)} · ${route(e.o)}`;
+  tip.style.display = "block";
+  tip.style.left = Math.min(innerWidth - tip.offsetWidth - 8, ev.clientX + 12) + "px";
+  tip.style.top = (ev.clientY - 44) + "px";
+});
+$("list").addEventListener("mouseleave", () => tip.style.display = "none");
+
+// ---------- išsaugojimas ----------
+function openSaveDialog() {
+  const cheapest = rows[0] ? Math.ceil(rows[0].best.total) : "";
+  $("sName").value = S.q ? `${S.q} iš ${S.origin}` : (S.warm ? `Šiltos kryptys iš ${S.origin}` : `Iš ${E.apName(S.origin)}`);
+  $("sMax").value = S.maxp ?? (cheapest ? cheapest + 10 : "");
+  $("sNotify").checked = true;
+  $("sHint").textContent = `Paieška: ${describe(S)}`;
+  $("saveDlg").showModal();
+}
+$("saveDlg").addEventListener("close", async () => {
+  if ($("saveDlg").returnValue !== "ok") return;
+  const maxp = $("sMax").value === "" ? null : +$("sMax").value;
+  const item = { id: Date.now().toString(36), name: $("sName").value.trim() || "Paieška",
+    notify: $("sNotify").checked && maxp != null, S: { ...JSON.parse(JSON.stringify(S)), maxp } };
+  STORE.searches.push(item);
+  if (await saveStore(`Nauja paieška`)) toast(item.notify ? "Išsaugota. Pranešimai bus patikrinti per kelias minutes." : "Išsaugota.");
+  else STORE.searches.pop();
+  renderSaved();
+});
+
+function renderSaved() {
+  const el = $("savedList"); if (!E) return;
+  if (!STORE.searches.length) {
+    el.innerHTML = `<div class="empty">Išsaugotų paieškų dar nėra.<br>Paieškos skiltyje nustatyk filtrus ir spausk ☆.</div>`; return;
+  }
+  el.innerHTML = STORE.searches.map(s => `<div class="box" data-id="${esc(s.id)}">
+      <h3>${esc(s.name)}</h3>
+      <p>${esc(describe({ ...defaultSearch(DATA), ...s.S }))}</p>
+      <p class="now" data-id="${esc(s.id)}">Skaičiuojama…</p>
+      <label class="check"><input type="checkbox" class="notify" ${s.notify ? "checked" : ""} ${s.S.maxp == null ? "disabled" : ""}> Pranešti į telefoną${s.S.maxp == null ? " (nustatyk kainos ribą)" : ""}</label>
+      <div class="acts"><button class="btn primary open">Atidaryti</button><button class="btn danger del">Ištrinti</button></div>
+    </div>`).join("");
+  // Dabartinė geriausia kaina — skaičiuojama po vieną, kad nesustingtų ekranas
+  let i = 0;
+  const step = () => {
+    const s = STORE.searches[i++]; if (!s) return;
+    const p = el.querySelector(`.now[data-id="${CSS.escape(s.id)}"]`);
+    if (p) {
+      const r = E.compute({ ...defaultSearch(DATA), ...s.S, maxp: null });
+      const ok = r.filter(x => s.S.maxp == null || x.best.total <= s.S.maxp);
+      p.innerHTML = r.length ? `Dabar pigiausia: <b>${esc(E.apName(r[0].dest))} ${eur(r[0].best.total)}</b>${s.S.maxp != null ? ` · tinka pagal ribą: ${ok.length}` : ""}` : "Šiuo metu tinkamų skrydžių nėra.";
+    }
+    setTimeout(step, 30);
+  };
+  setTimeout(step, 50);
+}
+$("savedList").addEventListener("click", async ev => {
+  const box = ev.target.closest(".box[data-id]"); if (!box) return;
+  const idx = STORE.searches.findIndex(s => s.id === box.dataset.id); if (idx < 0) return;
+  if (ev.target.closest(".open")) { applySearch(STORE.searches[idx]); return; }
+  if (ev.target.closest(".del")) {
+    if (!confirm(`Ištrinti „${STORE.searches[idx].name}“?`)) return;
+    const [rm] = STORE.searches.splice(idx, 1);
+    if (await saveStore("Ištrinta paieška")) toast("Ištrinta."); else STORE.searches.splice(idx, 0, rm);
+    renderSaved();
+  }
+});
+$("savedList").addEventListener("change", async ev => {
+  if (!ev.target.classList.contains("notify")) return;
+  const s = STORE.searches.find(x => x.id === ev.target.closest(".box").dataset.id);
+  s.notify = ev.target.checked;
+  if (!(await saveStore("Pakeisti pranešimai"))) { s.notify = !s.notify; ev.target.checked = s.notify; }
+});
+function applySearch(s) {
+  S = { ...defaultSearch(DATA), ...JSON.parse(JSON.stringify(s.S)) };
+  if (!DATA.origins.includes(S.origin)) S.origin = DATA.origins[0];
+  changed(); showTab("search");
+}
+function openFromHash() {
+  const m = location.hash.match(/#s=([^&]+)/); if (!m) return;
+  const s = STORE.searches.find(x => x.id === decodeURIComponent(m[1]));
+  if (s) applySearch(s);
+  history.replaceState(null, "", location.pathname);
+}
+
+// ---------- nustatymai ----------
+function renderSettings() {
+  if (!DATA) return;
+  const topic = STORE.settings.ntfy;
+  $("ntfyTopic").textContent = topic || "— (nenustatyta)";
+  $("ntfyLink").href = topic ? `https://ntfy.sh/${topic}` : "https://ntfy.sh/";
+  $("repoName").textContent = REPO ? `${REPO.owner}/${REPO.repo}` : "(nežinoma)";
+  $("ghStatus").innerHTML = ls.get("sk_gh") ? `<span class="ok">Raktas nustatytas.</span>` : "Raktas nenustatytas — paieškas matysi, bet išsaugoti negalėsi.";
+  const n = Object.keys(DATA.fares).length;
+  $("dataInfo").textContent = `Kainos atnaujintos ${DATA.generated.replace("T", " ")} · ${n} maršrutai · ${DATA.start} – ${DATA.end}`;
+}
+$("ghSave").onclick = async () => {
+  const t = $("ghToken").value.trim(); if (!t) return;
+  if (!REPO) { toast("Nežinoma repozitorija."); return; }
+  const r = await fetch(`https://api.github.com/repos/${REPO.owner}/${REPO.repo}`, { headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${t}` } });
+  if (!r.ok) { toast(`Raktas netinka (GitHub ${r.status}).`); return; }
+  const j = await r.json();
+  if (j.permissions && !j.permissions.push) { toast("Raktas neturi rašymo teisės į repozitoriją."); return; }
+  ls.set("sk_gh", t); $("ghToken").value = ""; renderSettings(); toast("Raktas išsaugotas.");
+  await loadStore(); renderSaved();
+};
+$("ghClear").onclick = () => { ls.set("sk_gh", null); renderSettings(); };
+$("ntfyTest").onclick = async () => {
+  const topic = STORE.settings.ntfy; if (!topic) { toast("Tema nenustatyta."); return; }
+  const r = await fetch("https://ntfy.sh/", { method: "POST", body: JSON.stringify({ topic, title: "✈ Bandomasis pranešimas", message: "Pranešimai veikia.", tags: ["airplane"] }) });
+  toast(r.ok ? "Išsiųsta — patikrink telefoną." : `Nepavyko (ntfy ${r.status}).`);
+};
+$("logout").onclick = () => { ls.set("sk_pw", null); location.reload(); };
+let installEvt = null;
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; $("installBtn").classList.remove("hidden"); });
+$("installBtn").onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $("installBtn").classList.add("hidden"); } };
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js");
+</script>
+</body>
+</html>
