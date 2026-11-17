@@ -14,7 +14,7 @@ export const AIRLINES = {
 };
 export const alName = c => AIRLINES[c] || c;
 
-export const MIN_GAP = 180, MAX_GAP = 1440; // persėdimui: nuo 3 iki 24 val.
+export const DEFAULT_LAY = [3, 24]; // persėdimo laukimas, val. (nustatomas filtruose)
 
 export function bookUrl(al, from, to, n) {
   const d = n2d(n);
@@ -29,7 +29,7 @@ export function defaultSearch(DATA) {
   return {
     origin: DATA.origins[0], mode: "rt", tr: DATA.transfers ? 1 : 0, nmin: 5, nmax: 10,
     dfrom: "", dto: "", outDays: [], backDays: [], outTime: [0, 24], backTime: [0, 24],
-    maxp: null, q: "", warm: false, sort: "p", airlines: [],
+    maxp: null, q: "", warm: false, sort: "p", airlines: [], lay: [...DEFAULT_LAY],
   };
 }
 
@@ -67,17 +67,18 @@ export function createEngine(DATA) {
   const cache = new Map();
   function itins(S) {
     const als = S.airlines && S.airlines.length ? new Set(S.airlines) : null;
-    const ck = JSON.stringify([S.origin, S.tr, S.outTime, S.backTime, S.airlines]);
+    const lay = S.lay || DEFAULT_LAY, minGap = lay[0] * 60, maxGap = lay[1] * 60;
+    const ck = JSON.stringify([S.origin, S.tr, S.outTime, S.backTime, S.airlines, lay]);
     if (cache.has(ck)) return cache.get(ck);
     const O = S.origin, out = {}, back = {};
     const alOk = f => !als || als.has(f[1]);
     const connect = (store, key, legA, m2, from2, to2) => {
       const a1 = legArr(legA); if (a1 == null) return;
-      const day = Math.floor(a1 / 1440);
-      for (const d2 of [day, day + 1]) {
+      const last = Math.floor((a1 + maxGap) / 1440);
+      for (let d2 = Math.floor((a1 + minGap) / 1440); d2 <= last; d2++) {
         const f2 = m2.get(d2); if (!f2 || !f2[2] || !alOk(f2)) continue;
         const gap = d2 * 1440 + hm(f2[2]) - a1;
-        if (gap >= MIN_GAP && gap <= MAX_GAP) add(store, key, legA.d, mkIt([legA, { from: from2, to: to2, d: d2, f: f2 }]));
+        if (gap >= minGap && gap <= maxGap) add(store, key, legA.d, mkIt([legA, { from: from2, to: to2, d: d2, f: f2 }]));
       }
     };
     for (const [T, m] of Object.entries(fares[O] || {}))
@@ -89,13 +90,13 @@ export function createEngine(DATA) {
     if (S.tr) {
       for (const [H, m1] of Object.entries(fares[O] || {}))
         for (const [T, m2] of Object.entries(fares[H] || {})) {
-          if (T === O || T === H || !isWarm(T)) continue;
+          if (T === O || T === H) continue;
           for (const [d, f1] of m1) if (alOk(f1) && inTime(f1, S.outTime)) connect(out, T, { from: O, to: H, d, f: f1 }, m2, H, T);
         }
       for (const H of Object.keys(fares)) {
         const m2 = fares[H][O]; if (!m2 || H === O) continue;
         for (const T of Object.keys(fares)) {
-          if (T === O || T === H || !isWarm(T)) continue;
+          if (T === O || T === H) continue;
           const m1 = fares[T][H]; if (!m1) continue;
           for (const [d, f1] of m1) if (alOk(f1) && inTime(f1, S.backTime)) connect(back, T, { from: T, to: H, d, f: f1 }, m2, H, O);
         }
@@ -157,7 +158,14 @@ export function createEngine(DATA) {
     return rows;
   }
 
-  return { DATA, fares, START, END, range, apName, apCountry, isWarm, airlinesPresent, legArr, itins, analyse, compute };
+  // Sekamo skrydžio dabartinė kaina: legs = [{from, to, date, al}] -> {p, legs: [f...]} arba null (nebėra)
+  function trackedPrice(legs) {
+    const fs = legs.map(l => (fares[l.from] || {})[l.to]?.get(d2n(l.date)));
+    if (fs.some(f => !f)) return null;
+    return { p: Math.round(fs.reduce((s, f) => s + f[0], 0) * 100) / 100, fs };
+  }
+
+  return { DATA, fares, START, END, range, apName, apCountry, isWarm, airlinesPresent, legArr, itins, analyse, compute, trackedPrice };
 }
 
 export const route = it => [it.legs[0].from, ...it.legs.map(l => l.to)].join("→");

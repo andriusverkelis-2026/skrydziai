@@ -34,6 +34,8 @@ BASE_H = {"User-Agent": UA, "Accept": "application/json, text/plain, */*",
           "Accept-Language": "en-GB,en;q=0.9"}
 
 DEFAULT_ORIGINS = ["VNO", "KUN", "RIX", "WAW", "WMI"]
+# Didieji persėdimo miestai: iš jų renkamos kainos į VISAS kryptis (iš kitų — tik į šiltas)
+DEFAULT_HUBS = ["BGY", "STN", "BUD", "CRL", "BCN", "LTN"]
 
 # Šiltos / egzotinės kryptys, į kurias ieškoma skrydžių per persėdimą.
 # Šalys — kaip jas vadina avialinijų API; Ispanija/Portugalija/Turkija — tik konkretūs oro uostai.
@@ -191,8 +193,8 @@ class Ryanair:
                 routes |= {(o, arr["iataCode"]), (arr["iataCode"], o)}
         return routes
 
-    def warm_routes_from(self, hubs: set[str], skip: set[str]) -> set[tuple[str, str]]:
-        """Maršrutai iš persėdimo miestų į šiltas kryptis (ir atgal)."""
+    def hub_routes(self, hubs: set[str], skip: set[str], full: set[str]) -> set[tuple[str, str]]:
+        """Maršrutai iš persėdimo miestų (ir atgal): iš `full` — į visas kryptis, iš kitų — tik į šiltas."""
         def one(h):
             d = get_json(self.s, "GET", self.ROUTES + h, log=False)
             out = set()
@@ -201,7 +203,7 @@ class Ryanair:
                 code, country = a["code"], a["country"]["name"]
                 c = a.get("coordinates") or {}
                 put_airport(code, a.get("name", code), country, c.get("latitude"), c.get("longitude"))
-                if is_warm(code, country) and code not in skip:
+                if code not in skip and (h in full or is_warm(code, country)):
                     out |= {(h, code), (code, h)}
             return out
         routes = set()
@@ -359,6 +361,8 @@ def main() -> None:
     ap.add_argument("--is", dest="origins", nargs="+", default=DEFAULT_ORIGINS)
     ap.add_argument("--dienos", type=int, default=120, help="kiek dienų į priekį ieškoti")
     ap.add_argument("--be-persedimu", action="store_true", help="nerinkti antro skrydžio kainų")
+    ap.add_argument("--hubai", nargs="*", default=DEFAULT_HUBS,
+                    help="persėdimo miestai, iš kurių renkamos kainos į visas kryptis")
     ap.add_argument("--be-ryanair", action="store_true")
     ap.add_argument("--be-wizz", action="store_true")
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT, help="kur įrašyti JSON")
@@ -380,11 +384,13 @@ def main() -> None:
     # 2. Persėdimai: iš kiekvieno pasiekiamo miesto — į šiltas kryptis ir atgal
     if not args.be_persedimu:
         hubs = {b for (a, b) in fares if a in origins} - set(origins)
-        print(f"Persėdimo miestai: {len(hubs)}")
+        full = {h.upper() for h in args.hubai} & hubs
+        print(f"Persėdimo miestai: {len(hubs)}, iš jų į visas kryptis: {', '.join(sorted(full)) or '—'}")
         if ry:
-            ry.fetch(ry.warm_routes_from(hubs, skip=set(origins)), "Ryanair persėdimai")
+            ry.fetch(ry.hub_routes(hubs, skip=set(origins), full=full), "Ryanair persėdimai")
         if wz:
-            wz.fetch(wz.routes_from(hubs, warm_only=True, skip=set(origins)), "Wizz persėdimai")
+            wz.fetch(wz.routes_from(hubs - full, warm_only=True, skip=set(origins))
+                     | wz.routes_from(full, warm_only=False, skip=set(origins)), "Wizz persėdimai")
 
     data = {
         "generated": dt.datetime.now().isoformat(timespec="minutes"),

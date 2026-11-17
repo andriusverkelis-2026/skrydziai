@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       rinkti:
-        description: "Surinkti naujas kainas (~25 min)"
+        description: "Surinkti naujas kainas (~1 val.)"
         type: boolean
         default: true
   push:
@@ -27,7 +27,7 @@ env:
 jobs:
   tikrinti:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 150
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
