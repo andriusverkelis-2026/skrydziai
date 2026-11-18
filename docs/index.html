@@ -392,16 +392,16 @@ dialog .inp { width: 100%; }
     <input class="inp wide" type="search" id="destFilter" placeholder="Ieškoti: miestas, šalis (pvz. egiptas, kanarai)">
     <div class="dest-f" id="destMode">
       <label class="ck"><input type="checkbox" data-f="direct"> Tik tiesioginės</label>
+      <label class="ck"><input type="checkbox" data-f="transfer"> Su persėdimu</label>
       <label class="ck"><input type="checkbox" data-f="warm"> ☀ Tik šiltos</label>
-      <label class="ck"><input type="checkbox" data-f="sel"> Tik pažymėtos</label>
     </div>
     <div style="display:flex;align-items:center;gap:8px;justify-content:space-between">
       <span class="hint" id="destCount" style="margin:0"></span>
-      <button class="btn" id="destAll" style="min-height:34px;padding:4px 12px">Pažymėti visas rodomas</button>
+      <button class="btn" id="destClear" style="min-height:34px;padding:4px 12px">Atžymėti pasirinkimą</button>
     </div>
   </div>
   <div class="sheet-c" id="destBody"></div>
-  <div class="sheet-f"><button class="btn" id="destClear">Išvalyti</button><button class="btn primary" id="destOk">Gerai</button></div>
+  <div class="sheet-f"><button class="btn primary" id="destOk">Gerai</button></div>
 </div>
 
 <!-- Kalendorius -->
@@ -635,8 +635,8 @@ function termsFor(nq) {
 }
 
 // ---------- krypčių langas su varnelėmis ----------
-let SEL = new Set(), SHOWN = [];
-const DEST_F = { direct: false, warm: false, sel: false };
+let SEL = new Set();
+const DEST_F = { direct: false, transfer: false, warm: false };
 function openDest() {
   if (!AIRPORTS) { toast("Krypčių sąrašas dar kraunamas — pabandyk po akimirkos."); return; }
   SEL = new Set(TARGETS.flatMap(t => t.codes));
@@ -658,25 +658,18 @@ function renderDest() {
   const hit = a => !terms || terms.some(t => norm(a.n).includes(t) || norm(a.c).includes(t) || norm(ctry(a.c)).includes(t) || norm(a.k) === t);
   const direct = a => (a.d || []).filter(o => S.origins.includes(o));
   let list = AIRPORTS.filter(hit);
-  // Filtrai derinami tarpusavyje (IR): pvz. tiesioginės + šiltos
-  if (DEST_F.direct) list = list.filter(a => direct(a).length);
+  // „Tik tiesioginės“ ir „Su persėdimu“: viena — filtruoja, abi arba nė vienos — visos. „Tik šiltos“ derinama su jomis.
+  if (DEST_F.direct && !DEST_F.transfer) list = list.filter(a => direct(a).length);
+  if (DEST_F.transfer && !DEST_F.direct) list = list.filter(a => !direct(a).length);
   if (DEST_F.warm) list = list.filter(a => a.w);
-  if (DEST_F.sel) list = list.filter(a => SEL.has(a.k));
-  SHOWN = list.map(a => a.k);
-  const allShownOn = SHOWN.length && SHOWN.every(k => SEL.has(k));
-  $("destAll").textContent = allShownOn ? "Atžymėti visas rodomas" : "Pažymėti visas rodomas";
-  $("destAll").disabled = !SHOWN.length;
-  $("destCount").textContent = `Rodoma ${SHOWN.length} · pažymėta ${SEL.size} iš ${MAX_TARGETS} galimų`;
+  updateDestHeader(list.length);
   const byC = new Map();
   for (const a of list) { const c = ctry(a.c); if (!byC.has(c)) byC.set(c, []); byC.get(c).push(a); }
   const countries = [...byC.keys()].sort((x, y) => x.localeCompare(y, "lt"));
-  $("destSheet").querySelector("h2").textContent = `Kryptys${SEL.size ? ` · pažymėta ${SEL.size}` : ""}`;
   if (!countries.length) { $("destBody").innerHTML = `<div class="empty">Nieko nerasta.</div>`; return; }
   $("destBody").innerHTML = countries.map(c => {
     const as = byC.get(c).sort((x, y) => x.n.localeCompare(y.n, "lt"));
-    const allOn = as.every(a => SEL.has(a.k));
-    return `<div class="country"><div class="country-h"><span>${esc(c)} <small style="color:var(--muted);font-weight:400">${as.length}</small></span>
-        <button data-country="${esc(c)}">${allOn ? "Atžymėti visus" : "Pažymėti visus"}</button></div>` +
+    return `<div class="country"><div class="country-h"><span>${esc(c)} <small style="color:var(--muted);font-weight:400">${as.length}</small></span></div>` +
       as.map(a => {
         const d = direct(a);
         const badge = d.length ? `<span class="badge dir">tiesiogiai: ${d.map(o => ORIGIN_SHORT[o]).join(", ")}</span>` : `<span class="badge tr">su persėdimu</span>`;
@@ -685,24 +678,22 @@ function renderDest() {
       }).join("") + `</div>`;
   }).join("");
 }
+let destShown = 0;
+function updateDestHeader(shown) {
+  if (shown != null) destShown = shown;
+  $("destSheet").querySelector("h2").textContent = `Kryptys${SEL.size ? ` · pažymėta ${SEL.size}` : ""}`;
+  $("destCount").textContent = `Rodoma ${destShown} · pažymėta ${SEL.size} (daugiausia ${MAX_TARGETS})`;
+  $("destClear").disabled = !SEL.size;
+}
 $("openDest").onclick = openDest;
 $("closeDest").onclick = () => closeDest(false);
 $("destBg").onclick = () => closeDest(false);
 $("destOk").onclick = () => closeDest(true);
-$("destClear").onclick = () => { SEL.clear(); renderDest(); };
+$("destClear").onclick = () => { SEL.clear(); $("destBody").querySelectorAll("[data-k]").forEach(x => x.checked = false); updateDestHeader(); };
 $("destFilter").oninput = () => renderDest();
 $("destMode").onchange = ev => {
   const cb = ev.target.closest("[data-f]"); if (!cb) return;
   DEST_F[cb.dataset.f] = cb.checked; renderDest();
-};
-$("destAll").onclick = () => {
-  if (SHOWN.every(k => SEL.has(k))) SHOWN.forEach(k => SEL.delete(k));
-  else {
-    let full = false;
-    for (const k of SHOWN) { if (SEL.has(k)) continue; if (SEL.size >= MAX_TARGETS) { full = true; break; } SEL.add(k); }
-    if (full) toast(`Pažymėta ${MAX_TARGETS} — daugiau vienai paieškai negalima. Susiaurink sąrašą filtrais.`, 5000);
-  }
-  renderDest();
 };
 $("destBody").addEventListener("change", ev => {
   const cb = ev.target.closest("[data-k]"); if (!cb) return;
@@ -710,22 +701,7 @@ $("destBody").addEventListener("change", ev => {
     if (SEL.size >= MAX_TARGETS) { cb.checked = false; toast(`Vienai paieškai — iki ${MAX_TARGETS} krypčių.`); return; }
     SEL.add(cb.dataset.k);
   } else SEL.delete(cb.dataset.k);
-  // atnaujinam tik antraštes (be viso sąrašo perpiešimo, kad neprarastum vietos sąraše)
-  $("destSheet").querySelector("h2").textContent = `Kryptys${SEL.size ? ` · pažymėta ${SEL.size}` : ""}`;
-  $("destCount").textContent = `Rodoma ${SHOWN.length} · pažymėta ${SEL.size} iš ${MAX_TARGETS} galimų`;
-  $("destAll").textContent = SHOWN.length && SHOWN.every(k => SEL.has(k)) ? "Atžymėti visas rodomas" : "Pažymėti visas rodomas";
-  const box = cb.closest(".country"), btn = box && box.querySelector("[data-country]");
-  if (btn) btn.textContent = [...box.querySelectorAll("[data-k]")].every(x => SEL.has(x.dataset.k)) ? "Atžymėti visus" : "Pažymėti visus";
-});
-$("destBody").addEventListener("click", ev => {
-  const b = ev.target.closest("[data-country]"); if (!b) return;
-  const boxes = [...b.closest(".country").querySelectorAll("[data-k]")];
-  const allOn = boxes.every(x => SEL.has(x.dataset.k));
-  if (allOn) boxes.forEach(x => SEL.delete(x.dataset.k));
-  else {
-    for (const x of boxes) { if (SEL.size >= MAX_TARGETS && !SEL.has(x.dataset.k)) { toast(`Vienai paieškai — iki ${MAX_TARGETS} krypčių.`); break; } SEL.add(x.dataset.k); }
-  }
-  renderDest();
+  updateDestHeader(); // be viso sąrašo perpiešimo, kad neprarastum vietos sąraše
 });
 function renderTargets() {
   ls.set("sk_targets", JSON.stringify(TARGETS));
