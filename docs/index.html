@@ -603,7 +603,7 @@ const LT_ALIAS = {
   kreta: "Heraklion|Chania", rodas: "Rhodes", korfu: "Corfu", marakesas: "Marrakesh|Marrakech", agadyras: "Agadir",
   hurgada: "Hurghada", sarm: "Sharm", kairas: "Cairo", dubajus: "Dubai", "abu dabis": "Abu Dhabi",
   "tel avivas": "Tel Aviv|Tel-Aviv", kutaisis: "Kutaisi", tbilisis: "Tbilisi", jerevanas: "Yerevan", baku: "Baku",
-  stambulas: "Istanbul", antalija: "Antalya", amanas: "Amman", akaba: "Aqaba", pafas: "Paphos", larnaka: "Larnaca",
+  stambulas: "Istanbul", antalija: "Antalya", amanas: "Amman", akaba: "Aqaba", pafas: "Paphos", pafos: "Paphos", larnaka: "Larnaca",
 };
 const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 const COUNTRY_LT = {
@@ -643,6 +643,8 @@ function closeDest(apply) {
   if (apply) {
     TARGETS = [...SEL].map(k => { const a = AIRPORTS.find(x => x.k === k); return { k, n: a ? a.n : k, codes: [k] }; });
     renderTargets();
+    autoDirect();
+    changed();
   }
   $("destSheet").classList.add("hidden"); $("destBg").classList.add("hidden"); document.body.style.overflow = "";
 }
@@ -708,7 +710,29 @@ function renderTargets() {
   $("openDest").textContent = n ? `Pažymėta krypčių: ${n} — keisti…` : "Pasirinkti kryptis…";
   $("targets").innerHTML = TARGETS.map((t, i) => `<button class="chip on" data-i="${i}">${esc(t.n)}<span class="x">✕</span></button>`).join("");
 }
-$("targets").addEventListener("click", ev => { const b = ev.target.closest("[data-i]"); if (b) { TARGETS.splice(+b.dataset.i, 1); renderTargets(); } });
+$("targets").addEventListener("click", ev => { const b = ev.target.closest("[data-i]"); if (b) { TARGETS.splice(+b.dataset.i, 1); renderTargets(); autoDirect(); changed(); } });
+
+// Jei į visas pasirinktas kryptis iš pažymėtų oro uostų skrendama tiesiogiai — rodom tik tiesioginius
+// (persėdimus galima įjungti filtruose; paieška juos vis tiek surenka, todėl jie atsiras iškart).
+function autoDirect() {
+  if (!AIRPORTS) return;
+  const codes = curCodes(); if (!codes.length) return;
+  const sel = codes.map(k => AIRPORTS.find(a => a.k === k)).filter(Boolean);
+  if (sel.length !== codes.length || !sel.every(a => Array.isArray(a.d))) return; // nežinom — nieko nekeičiam
+  const allDirect = sel.every(a => a.d.some(o => S.origins.includes(o)));
+  if (allDirect && S.tr) { S.tr = 0; toast("Į pasirinktas kryptis skrendama tiesiogiai — rodomi tik tiesioginiai. Persėdimus gali įjungti filtruose."); }
+  else if (!allDirect && !S.tr) { S.tr = 1; toast("Ne į visas kryptis yra tiesioginių skrydžių — įjungti ir persėdimai."); }
+}
+const curCodes = () => [...new Set(TARGETS.flatMap(t => t.codes))];
+const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x));
+const failedResults = new Set();
+// Neseniai atlikta paieška tomis pačiomis kryptimis, apimanti pasirinktas datas
+function findRecent(codes) {
+  const from = $("sFrom").value, to = $("sTo").value;
+  return ls.json("sk_recent", []).find(r => !failedResults.has(r.id) && sameSet(r.targets, codes)
+    && (!r.start || !from || r.start <= from) && (!r.end || !to || r.end >= to)
+    && Date.now() - new Date(r.at + ":00Z").getTime() < 24 * 3600e3);
+}
 
 // ---------- lietuviškas kalendorius (savaitė nuo pirmadienio) ----------
 const MON_FULL = ["sausis", "vasaris", "kovas", "balandis", "gegužė", "birželis", "liepa", "rugpjūtis", "rugsėjis", "spalis", "lapkritis", "gruodis"];
@@ -866,7 +890,7 @@ function cleanS() {
 async function openResult(id, quiet) {
   const recent = ls.json("sk_recent", []).find(r => r.id === id);
   const d = await loadData(`r/${id}.enc`).catch(() => null);
-  if (!d) { if (!quiet) toast("Šios paieškos rezultatų nebėra — paleisk iš naujo."); return; }
+  if (!d) { failedResults.add(id); if (!quiet) toast("Šios paieškos rezultatų nebėra — paleisk iš naujo."); render(); return; }
   ls.set("sk_lastResult", id);
   const targets = d.DATA.targets || [];
   const label = recent ? recent.name : targets.map(c => d.E.apName(c)).join(", ");
@@ -904,10 +928,34 @@ function searchForCur() {
 }
 function render() {
   updateCalBtn();
+  // Kryptimi: rezultatai rodomi tik jei jie atitinka pasirinktas kryptis (kitaip — kvietimas ieškoti)
+  if (VIEW === "dir") {
+    const codes = curCodes();
+    if (!CUR || !sameSet(codes, CUR.targets || [])) {
+      const rec = codes.length && findRecent(codes);
+      if (rec && (!CUR || rec.id !== CUR.id)) { openResult(rec.id, true); return; }
+      rows = []; showResView(); $("summary").textContent = "";
+      $("list").innerHTML = codes.length
+        ? `<div class="panel" style="text-align:center"><b>Pasirinkta: ${esc(TARGETS.map(t => t.n).join(", "))}</b><br>
+           Spausk <b>„Ieškoti“</b> — kainos bus surinktos per 2–5 min.<br>
+           <span class="hint">Filtrus gali keisti dabar arba po paieškos — jie pritaikomi iškart, iš naujo ieškoti nereikia.</span></div>`
+        : `<div class="empty">Pasirink, iš kur ir kur skrendi, ir spausk „Ieškoti“.</div>`;
+      return;
+    }
+  }
   if (!CUR) { rows = []; $("list").innerHTML = ""; $("summary").textContent = ""; showResView(); return; }
   const s = searchForCur();
   rows = CUR.E.computeMulti(s);
-  $("summary").innerHTML = `<b>${esc(CUR.label)}</b> · ${rows.length} variantai · ${esc(describe(s, CUR.DATA))} · kainos ${CUR.DATA.generated.slice(5, 16).replace("T", " ")}`;
+  // Įspėjimas, jei datos ar oro uostai platesni nei atlikta paieška
+  const D = CUR.DATA, warn = [];
+  if (VIEW === "dir") {
+    if (($("sFrom").value && $("sFrom").value < D.start) || ($("sTo").value && $("sTo").value > D.end))
+      warn.push(`paieška apėmė tik ${fmtD(d2n(D.start))}–${fmtD(d2n(D.end))}`);
+    const missing = S.origins.filter(o => !D.origins.includes(o));
+    if (missing.length) warn.push(`paieškoje nebuvo: ${missing.map(o => ORIGIN_SHORT[o] || o).join(", ")}`);
+  }
+  $("summary").innerHTML = (warn.length ? `<div class="status" style="margin:0 0 8px">⚠ ${esc(warn.join("; "))} — spausk „Ieškoti“, kad būtų visi variantai.</div>` : "")
+    + `<b>${esc(CUR.label)}</b> · ${rows.length} variantai · ${esc(describe(s, CUR.DATA))} · kainos ${CUR.DATA.generated.slice(5, 16).replace("T", " ")}`;
   showResView();
   if (!rows.length) { $("list").innerHTML = `<div class="empty">Pagal šiuos filtrus skrydžių nerasta.<br>Pakeisk filtrus arba paieškos datas.</div>`; return; }
   if (RES_VIEW === "map") renderMap();

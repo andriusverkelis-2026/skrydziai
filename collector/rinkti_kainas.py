@@ -520,7 +520,7 @@ def main() -> None:
 
     if args.oro_uostai:
         args.oro_uostai.parent.mkdir(parents=True, exist_ok=True)
-        args.oro_uostai.write_text(json.dumps(oro_uostai(ry, wz, origins), ensure_ascii=False, separators=(",", ":")),
+        args.oro_uostai.write_text(json.dumps(oro_uostai(ry, wz, sorted(set(DEFAULT_ORIGINS) | set(origins))), ensure_ascii=False, separators=(",", ":")),
                                    encoding="utf-8")
 
     if args.tik_oro_uostai:
