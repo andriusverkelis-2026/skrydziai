@@ -689,7 +689,7 @@ $("destBody").addEventListener("click", ev => {
 function renderTargets() {
   ls.set("sk_targets", JSON.stringify(TARGETS));
   const n = TARGETS.flatMap(t => t.codes).length;
-  $("openDest").textContent = n ? `Pažymėta kryptių: ${n} — keisti…` : "Pasirinkti kryptis…";
+  $("openDest").textContent = n ? `Pažymėta krypčių: ${n} — keisti…` : "Pasirinkti kryptis…";
   $("targets").innerHTML = TARGETS.map((t, i) => `<button class="chip on" data-i="${i}">${esc(t.n)}<span class="x">✕</span></button>`).join("");
 }
 $("targets").addEventListener("click", ev => { const b = ev.target.closest("[data-i]"); if (b) { TARGETS.splice(+b.dataset.i, 1); renderTargets(); } });
