@@ -274,6 +274,7 @@ dialog .inp { width: 100%; }
           <button class="btn wide dest-btn" id="openCal">📅 Pasirinkti datas…</button></div>
         <div class="fld"><button class="btn primary wide" id="searchBtn">Ieškoti</button>
           <div class="hint">Kainas renka GitHub serveris — užtrunka 2–5 min. Galima uždaryti programėlę, baigus atsiųsiu pranešimą.</div></div>
+        <div class="fld"><button class="btn danger wide clear-all">⟲ Išvalyti viską</button></div>
       </div>
       <!-- Visur -->
       <div id="allPanel" class="panel hidden">
@@ -282,6 +283,7 @@ dialog .inp { width: 100%; }
         <div class="fld"><input class="inp wide" type="search" id="q" placeholder="Filtruoti: miestas, šalis"></div>
         <div class="fld"><button class="btn wide" id="allBtn">Atnaujinti plačią paiešką (~1 val.)</button>
           <div class="hint">Renka kainas iš 5 oro uostų į visas kryptis 4 mėn. į priekį. Naudok retai — tai didelė apkrova.</div></div>
+        <div class="fld"><button class="btn danger wide clear-all">⟲ Išvalyti filtrus</button></div>
       </div>
       <div id="status" class="status hidden"><div class="spin"></div><div id="statusText" style="flex:1"></div>
         <button class="btn danger" id="cancelRun">Atšaukti</button></div>
@@ -762,6 +764,28 @@ $("calBody").addEventListener("click", ev => {
   });
   calTitle();
 });
+
+// ---------- išvalyti viską (išsaugotos kryptys ir sekami skrydžiai lieka) ----------
+function clearAll() {
+  const msg = VIEW === "dir"
+    ? "Išvalyti filtrus, pasirinktas kryptis, datas ir paskutines paieškas?\n\nIšsaugotos kryptys ir sekami skrydžiai liks."
+    : "Išvalyti visus filtrus?";
+  if (!confirm(msg)) return;
+  S = { ...defaultSearch({ origins: ORIGINS, transfers: true }) };
+  ls.set("sk_filters", null);
+  cardState.clear();
+  if (VIEW === "dir") {
+    TARGETS = []; renderTargets();
+    const t = todayN(); $("sFrom").value = n2d(t + 1); $("sTo").value = n2d(t + 120);
+    ls.set("sk_recent", null); ls.set("sk_lastResult", null);
+    CUR = null; rows = []; $("list").innerHTML = ""; $("summary").textContent = "";
+    renderRecent();
+  }
+  changed();
+  window.scrollTo(0, 0);
+  toast("Išvalyta.");
+}
+document.querySelectorAll(".clear-all").forEach(b => b.onclick = clearAll);
 
 // ---------- paieškos paleidimas ----------
 let polling = null;
