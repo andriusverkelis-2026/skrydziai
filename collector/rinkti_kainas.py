@@ -490,9 +490,12 @@ def main() -> None:
     else:
         start = today + dt.timedelta(days=1)
         end = start + dt.timedelta(days=args.dienos - 1)
+    # Išvykimo datos — start..end, bet kainos renkamos ilgiau: grįžimo skrydžiai (iki 30 naktų)
+    # ir antras persėdimo skrydis gali būti po paskutinės išvykimo dienos.
+    fetch_end = end + dt.timedelta(days=33 if plan else 14)
     t0 = time.time()
-    ry = None if args.be_ryanair else Ryanair(start, end)
-    wz = None if args.be_wizz else Wizz(start, end)
+    ry = None if args.be_ryanair else Ryanair(start, fetch_end)
+    wz = None if args.be_wizz else Wizz(start, fetch_end)
 
     if args.tik_oro_uostai:
         pass
