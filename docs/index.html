@@ -199,6 +199,17 @@ dialog .inp { width: 100%; }
   padding: 10px 2px; cursor: pointer; }
 .recent button:first-child { border-top: 0; }
 .recent small { color: var(--muted); }
+/* žemėlapis */
+#map { height: 62vh; min-height: 320px; border-radius: 16px; border: 1px solid var(--border); overflow: hidden; z-index: 0; }
+.pin { transform: translate(-50%, -120%); white-space: nowrap; background: #fff; color: #0f1b2d; border: 1px solid #c9d8ee;
+  border-radius: 12px; padding: 2px 8px; font: 12px/1.4 system-ui, sans-serif; box-shadow: 0 2px 6px rgba(10, 40, 90, .2); cursor: pointer; }
+.pin b { color: #1663c7; }
+.pin.top { background: #1663c7; color: #fff; border-color: #1663c7; z-index: 2; }
+.pin.top b { color: #fff; }
+.map-origin { font-weight: 600; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); } }
+:root[data-theme="dark"] .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); }
+.leaflet-popup-content { font: 13px/1.5 system-ui, sans-serif; }
 /* kalendorius */
 .cal-wd { display: grid; grid-template-columns: repeat(7, 1fr); padding: 8px 16px; border-bottom: 1px solid var(--border);
   font-size: 12px; color: var(--muted); text-align: center; }
@@ -288,6 +299,9 @@ dialog .inp { width: 100%; }
       <div id="status" class="status hidden"><div class="spin"></div><div id="statusText" style="flex:1"></div>
         <button class="btn danger" id="cancelRun">Atšaukti</button></div>
       <div class="summary" id="summary"></div>
+      <div class="seg hidden" id="resView" style="margin-bottom:10px"><button data-v="list">☰ Sąrašas</button><button data-v="map">🗺 Žemėlapis</button></div>
+      <div id="mapBox" class="hidden"><div id="map"></div>
+        <div class="hint" style="margin:6px 2px 14px">Ištisinė linija — tiesioginis skrydis, brūkšninė — su persėdimu (taškas — persėdimo miestas). Tamsesnė — pigiau. Spausk kainą — daugiau informacijos.</div></div>
       <div id="list"></div>
       <div id="recentBox" class="panel hidden"><h3 style="margin:0 0 6px;font-size:15px">Paskutinės paieškos</h3><div class="recent" id="recent"></div></div>
     </div>
@@ -890,11 +904,13 @@ function searchForCur() {
 }
 function render() {
   updateCalBtn();
-  if (!CUR) { rows = []; $("list").innerHTML = ""; $("summary").textContent = ""; return; }
+  if (!CUR) { rows = []; $("list").innerHTML = ""; $("summary").textContent = ""; showResView(); return; }
   const s = searchForCur();
   rows = CUR.E.computeMulti(s);
   $("summary").innerHTML = `<b>${esc(CUR.label)}</b> · ${rows.length} variantai · ${esc(describe(s, CUR.DATA))} · kainos ${CUR.DATA.generated.slice(5, 16).replace("T", " ")}`;
+  showResView();
   if (!rows.length) { $("list").innerHTML = `<div class="empty">Pagal šiuos filtrus skrydžių nerasta.<br>Pakeisk filtrus arba paieškos datas.</div>`; return; }
+  if (RES_VIEW === "map") renderMap();
   const E = CUR.E;
   $("list").innerHTML = rows.slice(0, 200).map((a, i) => {
     const b = a.best, its = [b.o, b.b].filter(Boolean);
@@ -909,6 +925,98 @@ function render() {
   }).join("");
   $("list").querySelectorAll(".card").forEach((c, i) => i < 3 ? fillCard(c) : io.observe(c));
 }
+// ---------- kainų žemėlapis ----------
+let RES_VIEW = ls.get("sk_resview") || "list", MAP = null, mapLayer = null, leafletP = null;
+const MAP_ROWS = 80; // daugiau linijų žemėlapis tampa neįskaitomas
+function loadLeaflet() {
+  if (window.L) return Promise.resolve();
+  return leafletP ||= new Promise((res, rej) => {
+    const css = document.createElement("link");
+    css.rel = "stylesheet"; css.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+    document.head.appendChild(css);
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+    s.onload = res; s.onerror = () => { leafletP = null; rej(new Error("leaflet")); };
+    document.head.appendChild(s);
+  });
+}
+function showResView() {
+  const has = !!(CUR && rows.length);
+  $("resView").classList.toggle("hidden", !has);
+  $("resView").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === RES_VIEW));
+  $("mapBox").classList.toggle("hidden", !has || RES_VIEW !== "map");
+  $("list").classList.toggle("hidden", has && RES_VIEW === "map");
+}
+$("resView").onclick = ev => {
+  const b = ev.target.closest("button"); if (!b) return;
+  RES_VIEW = b.dataset.v; ls.set("sk_resview", RES_VIEW); showResView();
+  if (RES_VIEW === "map") renderMap();
+};
+const MAP_SHADES = ["#184f95", "#256abf", "#3987e5", "#6da7ec", "#9ec5f4", "#b7d3f6"];
+async function renderMap() {
+  if (!CUR || !rows.length) return;
+  try { await loadLeaflet(); } catch { toast("Nepavyko įkelti žemėlapio — patikrink interneto ryšį."); return; }
+  if (!MAP) {
+    MAP = L.map("map", { worldCopyJump: true, zoomControl: true });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>', maxZoom: 12 }).addTo(MAP);
+  }
+  if (mapLayer) mapLayer.remove();
+  mapLayer = L.layerGroup().addTo(MAP);
+  const E = CUR.E, A = CUR.DATA.airports;
+  const ll = c => { const a = A[c]; return a && a.lat != null ? [a.lat, a.lon] : null; };
+  const show = rows.slice(0, MAP_ROWS);
+  const best = new Map(); // pigiausias variantas kiekvienai krypčiai
+  show.forEach((r, i) => { if (!best.has(r.dest) || r.best.total < best.get(r.dest).r.best.total) best.set(r.dest, { r, i }); });
+  const prices = [...best.values()].map(x => x.r.best.total).sort((a, b) => a - b);
+  const shade = p => MAP_SHADES[Math.min(5, Math.floor(prices.indexOf(p) / Math.max(1, prices.length) * 6))];
+  const pts = [];
+  // Linijos: plonos — visi variantai, storos — pigiausias į kiekvieną kryptį
+  for (const r of show) {
+    const legs = r.best.o.legs, path = [legs[0].from, ...legs.map(l => l.to)].map(ll);
+    if (path.some(x => !x)) continue;
+    const top = best.get(r.dest).r === r;
+    L.polyline(path, { color: top ? shade(r.best.total) : "#8494a8", weight: top ? 3 : 1.2, opacity: top ? .9 : .35,
+      dashArray: legs.length > 1 ? "6 6" : null, interactive: false }).addTo(mapLayer);
+    if (top && legs.length > 1)
+      L.circleMarker(path[1], { radius: 4, color: "#fff", weight: 1.5, fillColor: "#8494a8", fillOpacity: 1 })
+        .bindTooltip(`Persėdimas: ${esc(E.apName(legs[0].to))}`).addTo(mapLayer);
+    pts.push(...path);
+  }
+  // Išvykimo miestai
+  for (const o of new Set(show.map(r => r.origin))) {
+    const p = ll(o); if (!p) continue;
+    L.circleMarker(p, { radius: 6, color: "#fff", weight: 2, fillColor: "#1663c7", fillOpacity: 1 })
+      .bindTooltip(ORIGIN_NAMES[o] || o, { className: "map-origin" }).addTo(mapLayer);
+  }
+  // Kainos: 25 pigiausios kryptys — etiketės su kaina, kitos — taškai (paspaudus matosi kaina)
+  const LABELS = 25;
+  [...best.values()].sort((x, y) => x.r.best.total - y.r.best.total).forEach(({ r, i }, rank) => {
+    const p = ll(r.dest); if (!p) return;
+    const b = r.best, cheapest = rank === 0;
+    const when = S.mode === "rt" ? `${fmtDW(b.d)} → ${fmtDW(b.r)} (${b.r - b.o.arrDay} n.)` : fmtDW(b.d);
+    const via = [...new Set([viaOf(b.o), b.b && viaOf(b.b)].filter(Boolean))].map(v => E.apName(v));
+    const popup = `<b>${esc(ORIGIN_NAMES[r.origin] || r.origin)} → ${esc(E.apName(r.dest))}</b><br>
+      <b style="color:#1663c7;font-size:16px">${eur(b.total)}</b> · ${when}<br>
+      ${via.length ? `Su persėdimu: ${esc(via.join(", "))}` : "Tiesioginis"} · ${esc([...new Set([b.o, b.b].filter(Boolean).flatMap(it => it.legs.map(l => alName(l.f[1]))))].join(", "))}<br>
+      <button class="btn primary" style="margin-top:8px;min-height:34px" data-card="${i}">Rodyti kortelę</button>`;
+    const m = rank < LABELS
+      ? L.marker(p, { zIndexOffset: 1000 - rank, title: E.apName(r.dest), icon: L.divIcon({ className: "", iconSize: null, iconAnchor: [0, 0],
+          html: `<div class="pin${cheapest ? " top" : ""}">${eur(b.total)}</div>` }) })
+      : L.circleMarker(p, { radius: 5, color: "#fff", weight: 1, fillColor: shade(b.total), fillOpacity: 1 })
+          .bindTooltip(`${esc(E.apName(r.dest))} ${eur(b.total)}`);
+    m.bindPopup(popup).addTo(mapLayer);
+  });
+  if (pts.length) MAP.fitBounds(pts, { padding: [30, 30], maxZoom: 7 });
+  setTimeout(() => MAP.invalidateSize(), 60);
+}
+$("map").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-card]"); if (!b) return;
+  RES_VIEW = "list"; ls.set("sk_resview", "list"); showResView();
+  const card = $("list").querySelector(`.card[data-i="${b.dataset.card}"]`);
+  if (card) { if (!card.dataset.filled) fillCard(card); card.scrollIntoView({ behavior: "smooth", block: "start" }); }
+});
+
 const io = new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting && !e.target.dataset.filled) fillCard(e.target); }, { rootMargin: "500px" });
 const range = () => CUR.E.range(searchForCur());
 const skey = () => JSON.stringify([CUR && CUR.path, S.mode, S.tr, S.nmin, S.nmax, $("sFrom").value, $("sTo").value, S.outDays, S.backDays, S.outTime, S.backTime, S.airlines, S.lay]);
