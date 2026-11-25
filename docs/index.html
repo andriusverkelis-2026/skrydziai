@@ -962,7 +962,8 @@ function render() {
   $("list").innerHTML = rows.slice(0, 200).map((a, i) => {
     const b = a.best, its = [b.o, b.b].filter(Boolean);
     const als = [...new Set(its.flatMap(it => it.legs.map(l => l.f[1])))].map(x => `<span class="tag">${esc(alName(x))}</span>`).join("");
-    const vias = [...new Set(its.map(viaOf).filter(Boolean))].map(v => `<span class="tag via">per ${esc(E.apName(v))}</span>`).join("");
+    const vias = [...new Set(its.map(viaOf).filter(Boolean))].map(v => `<span class="tag via">per ${esc(E.apName(v))}</span>`).join("")
+      + (its.some(it => it.legs.some(l => l.f[5])) ? `<span class="tag via">airBaltic su persėdimu (1 bilietas)</span>` : "");
     const when = S.mode === "rt" ? `${fmtDW(b.d)} → ${fmtDW(b.r)} (${b.r - b.o.arrDay} n.)` : fmtDW(b.d);
     return `<section class="card" data-i="${i}">
       <div class="card-h"><span class="dest">${esc(ORIGIN_NAMES[a.origin] || a.origin)} → ${esc(E.apName(a.dest))} <small>${esc(E.apCountry(a.dest))} · ${a.dest}</small></span>
@@ -1132,7 +1133,8 @@ function gridRT(a, cs) {
     for (const d of cols) {
       const x = ok(d, r);
       if (!x) { h += `<td class="na">${r > d ? "·" : ""}</td>`; continue; }
-      const t = x[0].p + x[1].p, tr = x[0].legs.length > 1 || x[1].legs.length > 1;
+      const hasTr = it => it.legs.length > 1 || it.legs.some(l => l.f[5]);
+      const t = x[0].p + x[1].p, tr = hasTr(x[0]) || hasTr(x[1]);
       const sel = cs.pick && cs.pick.d === d && cs.pick.r === r ? " sel" : "";
       h += `<td class="${t === cells[0] ? "min" : ""}${sel}${tr ? " tr" : ""}" style="${shade(t, cells)}" data-d="${d}" data-r="${r}">${eur(t)}</td>`;
     }
@@ -1157,7 +1159,7 @@ function gridOW(a, cs) {
     const o = get(d), day = new Date(d * DAY).getUTCDate();
     if (!o) { h += `<td class="na">${day}</td>`; continue; }
     const sel = cs.pick && cs.pick.d === d ? " sel" : "";
-    h += `<td class="${o.p === vals[0] ? "min" : ""}${sel}${o.legs.length > 1 ? " tr" : ""}" style="${shade(o.p, vals)}" data-d="${d}"><span style="opacity:.7;font-size:10px">${day}</span><br>${eur(o.p)}</td>`;
+    h += `<td class="${o.p === vals[0] ? "min" : ""}${sel}${o.legs.length > 1 || o.legs.some(l => l.f[5]) ? " tr" : ""}" style="${shade(o.p, vals)}" data-d="${d}"><span style="opacity:.7;font-size:10px">${day}</span><br>${eur(o.p)}</td>`;
   }
   return h + `</tr></table>` + legend(vals.length);
 }
@@ -1168,6 +1170,7 @@ function legsHTML(it, word) {
     const f = l.f, arr = f[3];
     const arrTxt = arr == null ? "" : ` → ${f[4] ? "~" : ""}${clock(arr)}${arr >= 1440 ? " (+1 d.)" : ""}`;
     h += `<li><b>${fmtDW(l.d)} ${f[2] || ""}${arrTxt}</b><br>${esc(E.apName(l.from))} → ${esc(E.apName(l.to))} · ${esc(alName(f[1]))} · <b>${eur(f[0])}</b> · <a href="${bookUrl(f[1], l.from, l.to, l.d)}" target="_blank" rel="noopener">užsakyti ↗</a>`;
+    if (f[1] === "BT") h += `<div class="lay">${f[5] ? "Su persėdimu (dažniausiai Rygoje) — vienas airBaltic bilietas, vėlavimo atveju perkels avialinija. " : ""}Skrydžio laiką matysi airBaltic svetainėje.</div>`;
     const nx = it.legs[i + 1];
     if (nx) {
       const gap = nx.d * 1440 + hm(nx.f[2]) - E.legArr(l), night = Math.floor(E.legArr(l) / 1440) !== nx.d;
@@ -1261,7 +1264,7 @@ function setupControls() {
   for (const id of ["ot0", "ot1", "bt0", "bt1"]) $(id).innerHTML = hours;
   const layOpts = [1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 24, 36, 48, 72].map(h => `<option value="${h}">${h} val.</option>`).join("");
   $("lay0").innerHTML = $("lay1").innerHTML = layOpts;
-  $("airlines").innerHTML = ["FR", "W6"].map(a => `<button class="chip" data-a="${a}">${esc(alName(a))}</button>`).join("");
+  $("airlines").innerHTML = ["FR", "W6", "BT"].map(a => `<button class="chip" data-a="${a}">${esc(alName(a))}</button>`).join("");
   const t = todayN();
   if (!$("sFrom").value) $("sFrom").value = n2d(t + 1);
   if (!$("sTo").value) $("sTo").value = n2d(t + 120);

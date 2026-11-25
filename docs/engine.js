@@ -22,6 +22,8 @@ export function bookUrl(al, from, to, n) {
     return `https://www.ryanair.com/gb/en/trip/flights/select?adults=1&teens=0&children=0&infants=0&dateOut=${d}&dateIn=&isConnectedFlight=false&isReturn=false&discount=0&originIata=${from}&destinationIata=${to}`;
   if (al === "W6" || al === "W")
     return `https://wizzair.com/en-gb/booking/select-flight/${from}/${to}/${d}/null/1/0/0/null`;
+  if (al === "BT")
+    return `https://www.airbaltic.com/en/book-flight?originType=A&originCode=${from}&destinType=A&destinCode=${to}&tripType=oneway&departure=${d}&numAdt=1&numChd=0&numInf=0`;
   return `https://www.google.com/travel/flights?q=${encodeURIComponent(`flights from ${from} to ${to} on ${d} one way`)}`;
 }
 
@@ -38,16 +40,19 @@ export function createEngine(DATA) {
   const fares = {};
   for (const [k, v] of Object.entries(DATA.fares)) {
     const [a, b] = k.split("-");
-    const m = new Map();
-    for (const [d, f] of Object.entries(v)) m.set(d2n(d), f);
+    const m = new Map(), more = (DATA.more || {})[k] || {};
+    // Kiekvienai dienai — visų avialinijų kainos (pirma pigiausia)
+    for (const [d, f] of Object.entries(v)) m.set(d2n(d), [f, ...(more[d] || [])]);
     (fares[a] ||= {})[b] = m;
   }
+  const pick = (fs, ok) => { let b = null; for (const f of fs || []) if (ok(f) && (!b || f[0] < b[0])) b = f; return b; };
   const START = d2n(DATA.start), END = d2n(DATA.end);
   const ap = c => DATA.airports[c] || {};
   const apName = c => (ap(c).n || c).trim();
   const apCountry = c => (ap(c).c || "").trim();
   const isWarm = c => !!ap(c).w;
-  const airlinesPresent = [...new Set(Object.values(DATA.fares).flatMap(v => Object.values(v).map(f => f[1])))];
+  const airlinesPresent = [...new Set([...Object.values(DATA.fares).flatMap(v => Object.values(v).map(f => f[1])),
+    ...Object.values(DATA.more || {}).flatMap(v => Object.values(v).flat().map(f => f[1]))])];
 
   const legArr = l => l.f[3] == null ? null : l.d * 1440 + l.f[3];
   const mkIt = legs => {
@@ -72,34 +77,36 @@ export function createEngine(DATA) {
     const ck = JSON.stringify([S.origin, S.tr, S.outTime, S.backTime, S.airlines, lay]);
     if (cache.has(ck)) return cache.get(ck);
     const O = S.origin, out = {}, back = {};
-    const alOk = f => !als || als.has(f[1]);
+    const alOk = f => (!als || als.has(f[1])) && (S.tr || !f[5]);
     const connect = (store, key, legA, m2, from2, to2) => {
       const a1 = legArr(legA); if (a1 == null) return;
       const last = Math.floor((a1 + maxGap) / 1440);
       for (let d2 = Math.floor((a1 + minGap) / 1440); d2 <= last; d2++) {
-        const f2 = m2.get(d2); if (!f2 || !f2[2] || !alOk(f2)) continue;
-        const gap = d2 * 1440 + hm(f2[2]) - a1;
-        if (gap >= minGap && gap <= maxGap) add(store, key, legA.d, mkIt([legA, { from: from2, to: to2, d: d2, f: f2 }]));
+        for (const f2 of m2.get(d2) || []) {
+          if (!f2[2] || !alOk(f2)) continue;
+          const gap = d2 * 1440 + hm(f2[2]) - a1;
+          if (gap >= minGap && gap <= maxGap) add(store, key, legA.d, mkIt([legA, { from: from2, to: to2, d: d2, f: f2 }]));
+        }
       }
     };
     for (const [T, m] of Object.entries(fares[O] || {}))
-      for (const [d, f] of m) if (alOk(f) && inTime(f, S.outTime)) add(out, T, d, mkIt([{ from: O, to: T, d, f }]));
+      for (const [d, fs] of m) { const f = pick(fs, f => alOk(f) && inTime(f, S.outTime)); if (f) add(out, T, d, mkIt([{ from: O, to: T, d, f }])); }
     for (const T of Object.keys(fares)) {
       const m = fares[T][O]; if (!m || T === O) continue;
-      for (const [d, f] of m) if (alOk(f) && inTime(f, S.backTime)) add(back, T, d, mkIt([{ from: T, to: O, d, f }]));
+      for (const [d, fs] of m) { const f = pick(fs, f => alOk(f) && inTime(f, S.backTime)); if (f) add(back, T, d, mkIt([{ from: T, to: O, d, f }])); }
     }
     if (S.tr) {
       for (const [H, m1] of Object.entries(fares[O] || {}))
         for (const [T, m2] of Object.entries(fares[H] || {})) {
           if (T === O || T === H) continue;
-          for (const [d, f1] of m1) if (alOk(f1) && inTime(f1, S.outTime)) connect(out, T, { from: O, to: H, d, f: f1 }, m2, H, T);
+          for (const [d, fs] of m1) for (const f1 of fs) if (alOk(f1) && inTime(f1, S.outTime)) connect(out, T, { from: O, to: H, d, f: f1 }, m2, H, T);
         }
       for (const H of Object.keys(fares)) {
         const m2 = fares[H][O]; if (!m2 || H === O) continue;
         for (const T of Object.keys(fares)) {
           if (T === O || T === H) continue;
           const m1 = fares[T][H]; if (!m1) continue;
-          for (const [d, f1] of m1) if (alOk(f1) && inTime(f1, S.backTime)) connect(back, T, { from: T, to: H, d, f: f1 }, m2, H, O);
+          for (const [d, fs] of m1) for (const f1 of fs) if (alOk(f1) && inTime(f1, S.backTime)) connect(back, T, { from: T, to: H, d, f: f1 }, m2, H, O);
         }
       }
     }
@@ -171,7 +178,8 @@ export function createEngine(DATA) {
 
   // Sekamo skrydžio dabartinė kaina: legs = [{from, to, date, al}] -> {p, legs: [f...]} arba null (nebėra)
   function trackedPrice(legs) {
-    const fs = legs.map(l => (fares[l.from] || {})[l.to]?.get(d2n(l.date)));
+    // Pirmiausia tos pačios avialinijos kaina; jei jos nebėra — pigiausia tos dienos
+    const fs = legs.map(l => { const all = (fares[l.from] || {})[l.to]?.get(d2n(l.date)); return all && (pick(all, f => f[1] === l.al) || pick(all, () => true)); });
     if (fs.some(f => !f)) return null;
     return { p: Math.round(fs.reduce((s, f) => s + f[0], 0) * 100) / 100, fs };
   }

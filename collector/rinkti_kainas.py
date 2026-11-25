@@ -67,8 +67,9 @@ TZ_AIRPORT = {"TFS": 0, "TFN": 0, "LPA": 0, "ACE": 0, "FUE": 0, "SPC": 0, "PDL":
 
 FAIL = object()
 _lock = threading.Lock()
-# fares[(from, to)][date] = [kaina, avialinija, išvykimo "HH:MM", atvykimas min. nuo išvykimo dienos
-#                            vidurnakčio (atvykimo vietos laiku) arba None, 1 jei atvykimas apskaičiuotas]
+# fares[(from, to)][date][avialinija] = [kaina, avialinija, išvykimo "HH:MM", atvykimas min. nuo išvykimo
+#   dienos vidurnakčio (atvykimo vietos laiku) arba None, 1 jei atvykimas apskaičiuotas, (1 — airBaltic su persėdimu)]
+# Saugoma pigiausia kiekvienos avialinijos tos dienos kaina (filtrams pagal avialiniją ir laiką).
 fares: dict[tuple[str, str], dict[str, list]] = {}
 airports: dict[str, dict] = {}
 errors: list[str] = []
@@ -79,12 +80,13 @@ def is_warm(code: str, country: str) -> bool:
 
 
 def put_fare(frm: str, to: str, day: str, price: float, airline: str, hhmm: str,
-             arr_min: int | None, est: int) -> None:
+             arr_min: int | None, est: int, via: int = 0) -> None:
+    """via=1 — airBaltic skrydis su persėdimu (vienas bilietas, laikas nežinomas)."""
     with _lock:
-        d = fares.setdefault((frm, to), {})
-        cur = d.get(day)
+        per = fares.setdefault((frm, to), {}).setdefault(day, {})
+        cur = per.get(airline)
         if cur is None or price < cur[0]:
-            d[day] = [round(price, 2), airline, hhmm, arr_min, est]
+            per[airline] = [round(price, 2), airline, hhmm, arr_min, est] + ([1] if via else [])
 
 
 def put_airport(code: str, name: str, country: str, lat=None, lon=None) -> None:
@@ -358,12 +360,78 @@ class Wizz:
         return True
 
 
+# ---------------------------------------------------------------- airBaltic
+class AirBaltic:
+    """airBaltic svetainės kainų kalendorius: viena užklausa — kiekvienos dienos pigiausia kaina metams į priekį.
+    Skrydžio laiko kalendorius neduoda, todėl airBaltic skrydžiai nejungiami su kitų avialinijų persėdimais."""
+    API = "https://www.airbaltic.com/api/"
+
+    def __init__(self, start: dt.date, end: dt.date):
+        self.s = requests.Session()
+        self.s.headers.update({**BASE_H, "Referer": "https://www.airbaltic.com/en-LT/index"})
+        self.start, self.end = start, end
+        self.dests: dict[str, dict[str, bool]] = {}  # išvykimas -> {kryptis: ar yra tiesioginis}
+        self.fetched: set[tuple[str, str]] = set()
+        j = get_json(self.s, "GET", self.API + "orig-dest/en", log=False)
+        if not j or j is FAIL:
+            errors.append("airBaltic: nepavyko gauti maršrutų sąrašo — airBaltic kainos praleistos")
+            print("airBaltic: maršrutų sąrašas nepasiekiamas, praleidžiu")
+            return
+        for okey in (j.get("origData") or {}).get("btOrigins") or {}:
+            info = (j.get("destinData") or {}).get(okey) or {}
+            o = okey[:-1] if okey.endswith("A") else okey
+            out = {}
+            for dkey, v in (info.get("btDest") or {}).items():
+                code = v.get("code") or dkey[:-1]
+                out[code] = bool(v.get("hasBTDirect"))
+                try:
+                    put_airport(code, v.get("city") or code, v.get("country") or "",
+                                float(v["latitude"]), float(v["longitude"]))
+                except (KeyError, TypeError, ValueError):
+                    put_airport(code, v.get("city") or code, v.get("country") or "")
+            if out:
+                self.dests[o] = out
+
+    def routes(self, origins: list[str], targets: list[str] | None = None) -> set[tuple[str, str]]:
+        pairs = set()
+        for o in origins:
+            for t in self.dests.get(o, {}):
+                if t not in origins and (targets is None or t in targets):
+                    pairs |= {(o, t), (t, o)}
+        return pairs
+
+    def fetch(self, pairs: set[tuple[str, str]], label: str = "airBaltic") -> None:
+        pairs = pairs - self.fetched
+        self.fetched |= pairs
+        if not pairs:
+            return
+        print(f"{label}: {len(pairs) // 2 or len(pairs)} maršrutai, {len(pairs)} užklausos")
+        failed = run_jobs(self._job, sorted(pairs), workers=3, label=label)
+        if failed:
+            time.sleep(20)
+            run_jobs(self._job, [(*j, True) for j in failed], workers=1, label=f"{label} (pakartotinai)")
+
+    def _job(self, a: str, b: str, last_try: bool = False) -> bool:
+        d = get_json(self.s, "GET", self.API + "fsf/outbound",
+                     params={"flightMode": "oneway", "origin": a, "destin": b},
+                     pause=1.0 if last_try else 0.2, log=last_try)
+        if d is FAIL:
+            return False
+        for x in (d or {}).get("data") or []:
+            day, price = x.get("date"), x.get("price")
+            if not day or not price or not (str(self.start) <= day <= str(self.end)):
+                continue
+            put_fare(a, b, day, float(price), "BT", "", None, 0, via=0 if x.get("isDirect") else 1)
+        return True
+
+
 # ---------------------------------------------------------------- tikslinė paieška
 # Kaunas Wizz žemėlapyje turi Vilniaus jungtis (užklausos grąžina VNO skrydžius) — Wizz jam praleidžiame
 WIZZ_SKIP = {"KUN"}
 
 
-def tikslinis(plan: dict, origins: list[str], ry: "Ryanair | None", wz: "Wizz | None") -> None:
+def tikslinis(plan: dict, origins: list[str], ry: "Ryanair | None", wz: "Wizz | None",
+              ab: "AirBaltic | None" = None) -> None:
     """Kainos tik į nurodytas kryptis (plan["targets"]): tiesiogiai ir per VISUS persėdimo miestus,
     į kuriuos skrendama iš išvykimo oro uostų ir iš kurių skrendama į tikslą. Plius sekami skrydžiai."""
     targets = [t.upper() for t in plan.get("targets", [])]
@@ -409,6 +477,8 @@ def tikslinis(plan: dict, origins: list[str], ry: "Ryanair | None", wz: "Wizz | 
             ry.fetch(fr_pairs, "Ryanair")
         if wz:
             wz.fetch(wz_pairs, "Wizz")
+        if ab:
+            ab.fetch(ab.routes(origins, targets))
 
     # Sekami skrydžiai: tik konkretūs maršrutai ir mėnesiai / dienos
     tracked = plan.get("tracked", [])
@@ -423,9 +493,14 @@ def tikslinis(plan: dict, origins: list[str], ry: "Ryanair | None", wz: "Wizz | 
             run_jobs(ry._job, fr_jobs, workers=3, label="Ryanair sekami")
         if wz and wz.base and wz_jobs:
             run_jobs(wz._job, wz_jobs, workers=2, label="Wizz sekami")
+        bt_pairs = {(l["from"], l["to"]) for l in tracked if l.get("al") == "BT"}
+        if ab and bt_pairs:
+            ab.end = max(ab.end, max(dt.date.fromisoformat(l["date"]) for l in tracked))
+            ab.fetch(bt_pairs, "airBaltic sekami")
 
 
-def oro_uostai(ry: "Ryanair | None", wz: "Wizz | None", origins: list[str]) -> list[dict]:
+def oro_uostai(ry: "Ryanair | None", wz: "Wizz | None", origins: list[str],
+               ab: "AirBaltic | None" = None) -> list[dict]:
     """Visi Ryanair ir Wizz oro uostai krypčių langui programėlėje:
     k — kodas, n — pavadinimas, c — šalis, w — šilta kryptis, a — avialinijos,
     d — iš kurių išvykimo oro uostų skrendama tiesiogiai."""
@@ -458,6 +533,13 @@ def oro_uostai(ry: "Ryanair | None", wz: "Wizz | None", origins: list[str]) -> l
                 e = out.get(c["iata"])
                 if e is not None and o not in e["d"]:
                     e["d"].append(o)
+    if ab:
+        for o in origins:
+            for code, direct in ab.dests.get(o, {}).items():
+                a = airports.get(code, {})
+                e = add(code, a.get("n") or code, a.get("c") or "", "BT")
+                if direct and o not in e["d"]:
+                    e["d"].append(o)
     for o in origins:
         out.pop(o, None)
     return sorted(out.values(), key=lambda x: (x["c"], x["n"]))
@@ -475,6 +557,7 @@ def main() -> None:
     ap.add_argument("--tik-oro-uostai", action="store_true", help="tik atnaujinti oro uostų sąrašą (be kainų)")
     ap.add_argument("--be-ryanair", action="store_true")
     ap.add_argument("--be-wizz", action="store_true")
+    ap.add_argument("--be-airbaltic", action="store_true")
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT, help="kur įrašyti JSON")
     args = ap.parse_args()
 
@@ -496,20 +579,24 @@ def main() -> None:
     t0 = time.time()
     ry = None if args.be_ryanair else Ryanair(start, fetch_end)
     wz = None if args.be_wizz else Wizz(start, fetch_end)
+    ab = None if args.be_airbaltic else AirBaltic(start, fetch_end)
 
     if args.tik_oro_uostai:
         pass
     elif plan:
-        tikslinis(plan, origins, ry, wz)
+        tikslinis(plan, origins, ry, wz, ab)
     else:
         # 1. Tiesioginiai skrydžiai iš (ir atgal į) išvykimo oro uostus
         if ry:
             ry.fetch(ry.direct_routes(origins), "Ryanair tiesioginiai")
         if wz:
             wz.fetch(wz.routes_from(set(origins), warm_only=False), "Wizz tiesioginiai")
+        if ab:
+            ab.fetch(ab.routes(origins), "airBaltic")
         # 2. Persėdimai: iš didžiųjų miestų — į visas kryptis, iš kitų — į šiltas
         if not args.be_persedimu:
-            hubs = {b for (a, b) in fares if a in origins} - set(origins)
+            hubs = {b for (a, b), v in fares.items()
+                    if a in origins and any(al != "BT" for per in v.values() for al in per)} - set(origins)
             full = {h.upper() for h in args.hubai} & hubs
             print(f"Persėdimo miestai: {len(hubs)}, iš jų į visas kryptis: {', '.join(sorted(full)) or '—'}")
             if ry:
@@ -520,7 +607,7 @@ def main() -> None:
 
     if args.oro_uostai:
         args.oro_uostai.parent.mkdir(parents=True, exist_ok=True)
-        args.oro_uostai.write_text(json.dumps(oro_uostai(ry, wz, sorted(set(DEFAULT_ORIGINS) | set(origins))), ensure_ascii=False, separators=(",", ":")),
+        args.oro_uostai.write_text(json.dumps(oro_uostai(ry, wz, sorted(set(DEFAULT_ORIGINS) | set(origins)), ab), ensure_ascii=False, separators=(",", ":")),
                                    encoding="utf-8")
 
     if args.tik_oro_uostai:
@@ -532,7 +619,12 @@ def main() -> None:
         "transfers": plan is not None or not args.be_persedimu,
         "targets": plan.get("targets", []) if plan else None,
         "airports": {k: v for k, v in airports.items() if "n" in v},
-        "fares": {f"{a}-{b}": dict(sorted(v.items())) for (a, b), v in sorted(fares.items()) if v},
+        # fares — pigiausia dienos kaina; more — kitų avialinijų tos dienos kainos
+        "fares": {f"{a}-{b}": {day: min(per.values(), key=lambda f: f[0]) for day, per in sorted(v.items())}
+                  for (a, b), v in sorted(fares.items()) if v},
+        "more": {k: m for k, m in (
+            (f"{a}-{b}", {day: sorted(per.values(), key=lambda f: f[0])[1:] for day, per in sorted(v.items()) if len(per) > 1})
+            for (a, b), v in sorted(fares.items())) if m},
         "errors": errors[:100],
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
