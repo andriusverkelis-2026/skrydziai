@@ -17,6 +17,7 @@ import argparse
 import datetime as dt
 import json
 import math
+import os
 import re
 import sys
 import threading
@@ -80,13 +81,15 @@ def is_warm(code: str, country: str) -> bool:
 
 
 def put_fare(frm: str, to: str, day: str, price: float, airline: str, hhmm: str,
-             arr_min: int | None, est: int, via: int = 0) -> None:
-    """via=1 — airBaltic skrydis su persėdimu (vienas bilietas, laikas nežinomas)."""
+             arr_min: int | None, est: int, via: int = 0, cached: int = 0) -> None:
+    """via=1 — skrydis su persėdimu vienu bilietu (airBaltic, Aviasales);
+    cached=1 — kaina iš Aviasales paieškų talpyklos (gali būti pasenusi)."""
+    extra = [via, 1] if cached else ([1] if via else [])
     with _lock:
         per = fares.setdefault((frm, to), {}).setdefault(day, {})
         cur = per.get(airline)
         if cur is None or price < cur[0]:
-            per[airline] = [round(price, 2), airline, hhmm, arr_min, est] + ([1] if via else [])
+            per[airline] = [round(price, 2), airline, hhmm, arr_min, est] + extra
 
 
 def put_airport(code: str, name: str, country: str, lat=None, lon=None) -> None:
@@ -425,13 +428,68 @@ class AirBaltic:
         return True
 
 
+# ---------------------------------------------------------------- Travelpayouts (Aviasales)
+class Travelpayouts:
+    """Aviasales Data API: kitų žmonių per ~2 paras rastos kainos (visos avialinijos).
+    Imamos tik avialinijos, kurių neturim tiksliai iš jų pačių svetainių."""
+    API = "https://api.travelpayouts.com/aviasales/v3/prices_for_dates"
+    SKIP = {"FR", "RK", "W6", "W4", "W9", "5W", "BT"}  # Ryanair ir Wizz grupės, airBaltic — renkam tiesiogiai
+
+    def __init__(self, token: str, start: dt.date, end: dt.date):
+        self.s = requests.Session()
+        self.s.headers.update({"Accept": "application/json", "Accept-Encoding": "gzip, deflate",
+                               "X-Access-Token": token})
+        self.token, self.start, self.end = token, start, end
+        self.fetched: set[tuple[str, str, dt.date]] = set()
+
+    def fetch(self, pairs: set[tuple[str, str]], label: str = "Aviasales", months: list | None = None) -> None:
+        ms = months or months_between(self.start, self.end)
+        jobs = sorted({(a, b, m) for a, b in pairs for m in ms} - self.fetched)
+        self.fetched |= set(jobs)
+        if not jobs:
+            return
+        print(f"{label}: {len(pairs)} kryptys, {len(jobs)} užklausos")
+        failed = run_jobs(self._job, jobs, workers=2, label=label)
+        if failed:
+            time.sleep(20)
+            run_jobs(self._job, [(*j, True) for j in failed], workers=1, label=f"{label} (pakartotinai)")
+
+    def _job(self, a: str, b: str, m: dt.date, last_try: bool = False) -> bool:
+        d = get_json(self.s, "GET", self.API, params={
+            "origin": a, "destination": b, "departure_at": m.strftime("%Y-%m"), "one_way": "true",
+            "direct": "false", "sorting": "price", "limit": 1000, "currency": "eur", "token": self.token},
+            pause=1.0 if last_try else 0.3, log=last_try)
+        if d is FAIL:
+            return False
+        for t in (d or {}).get("data") or []:
+            al = t.get("airline") or ""
+            dep = t.get("departure_at") or ""
+            if not al or al in self.SKIP or len(dep) < 16 or not t.get("price"):
+                continue
+            day = dep[:10]
+            if not (str(self.start) <= day <= str(self.end)):
+                continue
+            frm = t.get("origin_airport") or a
+            to = t.get("destination_airport") or b
+            hhmm = dep[11:16]
+            arr = None
+            dur = t.get("duration_to") or t.get("duration")
+            off = re.search(r"([+-])(\d\d):(\d\d)$", dep)
+            if dur and off:
+                dep_tz = (1 if off.group(1) == "+" else -1) * (int(off.group(2)) * 60 + int(off.group(3)))
+                arr = int(hhmm[:2]) * 60 + int(hhmm[3:5]) + int(dur) + tz_of(to) - dep_tz
+            put_fare(frm, to, day, float(t["price"]), al, hhmm, arr, 1,
+                     via=1 if (t.get("transfers") or 0) > 0 else 0, cached=1)
+        return True
+
+
 # ---------------------------------------------------------------- tikslinė paieška
 # Kaunas Wizz žemėlapyje turi Vilniaus jungtis (užklausos grąžina VNO skrydžius) — Wizz jam praleidžiame
 WIZZ_SKIP = {"KUN"}
 
 
 def tikslinis(plan: dict, origins: list[str], ry: "Ryanair | None", wz: "Wizz | None",
-              ab: "AirBaltic | None" = None) -> None:
+              ab: "AirBaltic | None" = None, tp: "Travelpayouts | None" = None) -> None:
     """Kainos tik į nurodytas kryptis (plan["targets"]): tiesiogiai ir per VISUS persėdimo miestus,
     į kuriuos skrendama iš išvykimo oro uostų ir iš kurių skrendama į tikslą. Plius sekami skrydžiai."""
     targets = [t.upper() for t in plan.get("targets", [])]
@@ -479,6 +537,8 @@ def tikslinis(plan: dict, origins: list[str], ry: "Ryanair | None", wz: "Wizz | 
             wz.fetch(wz_pairs, "Wizz")
         if ab:
             ab.fetch(ab.routes(origins, targets))
+        if tp:
+            tp.fetch({(o, t) for o in origins for t in targets if o != t} | {(t, o) for o in origins for t in targets if o != t})
 
     # Sekami skrydžiai: tik konkretūs maršrutai ir mėnesiai / dienos
     tracked = plan.get("tracked", [])
@@ -497,6 +557,12 @@ def tikslinis(plan: dict, origins: list[str], ry: "Ryanair | None", wz: "Wizz | 
         if ab and bt_pairs:
             ab.end = max(ab.end, max(dt.date.fromisoformat(l["date"]) for l in tracked))
             ab.fetch(bt_pairs, "airBaltic sekami")
+        tp_legs = [l for l in tracked if l.get("al") not in ("FR", "R", "W6", "W", "BT")]
+        if tp and tp_legs:
+            for l in tp_legs:
+                m = dt.date.fromisoformat(l["date"]).replace(day=1)
+                tp.end = max(tp.end, dt.date.fromisoformat(l["date"]))
+                tp.fetch({(l["from"], l["to"])}, "Aviasales sekami", months=[m])
 
 
 def oro_uostai(ry: "Ryanair | None", wz: "Wizz | None", origins: list[str],
@@ -580,11 +646,13 @@ def main() -> None:
     ry = None if args.be_ryanair else Ryanair(start, fetch_end)
     wz = None if args.be_wizz else Wizz(start, fetch_end)
     ab = None if args.be_airbaltic else AirBaltic(start, fetch_end)
+    token = os.environ.get("TRAVELPAYOUTS_TOKEN", "").strip()
+    tp = Travelpayouts(token, start, fetch_end) if token and plan else None  # tik tikslinei paieškai
 
     if args.tik_oro_uostai:
         pass
     elif plan:
-        tikslinis(plan, origins, ry, wz, ab)
+        tikslinis(plan, origins, ry, wz, ab, tp)
     else:
         # 1. Tiesioginiai skrydžiai iš (ir atgal į) išvykimo oro uostus
         if ry:

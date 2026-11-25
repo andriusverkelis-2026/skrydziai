@@ -11,7 +11,13 @@ export const hm = s => s ? (+s.slice(0, 2)) * 60 + (+s.slice(3, 5)) : null;
 export const AIRLINES = {
   FR: "Ryanair", W6: "Wizz Air", BT: "airBaltic", AY: "Finnair", TK: "Turkish Airlines",
   LO: "LOT", LH: "Lufthansa", R: "Ryanair", W: "Wizz Air",
+  SK: "SAS", DY: "Norwegian", D8: "Norwegian", KL: "KLM", AF: "Air France", OS: "Austrian", LX: "SWISS",
+  SN: "Brussels Airlines", EW: "Eurowings", A3: "Aegean", PS: "UIA", EK: "Emirates", QR: "Qatar Airways",
+  EY: "Etihad", FZ: "flydubai", PC: "Pegasus", XQ: "SunExpress", U2: "easyJet", VY: "Vueling", IB: "Iberia",
+  TP: "TAP Air Portugal", AZ: "ITA Airways", HV: "Transavia", LS: "Jet2", G9: "Air Arabia", J2: "AZAL",
+  "*": "Kitos avialinijos",
 };
+export const OWN = new Set(["FR", "W6", "BT", "R", "W"]); // kainos tiesiai iš avialinijų svetainių
 export const alName = c => AIRLINES[c] || c;
 
 export const DEFAULT_LAY = [3, 24]; // persėdimo laukimas, val. (nustatomas filtruose)
@@ -24,7 +30,8 @@ export function bookUrl(al, from, to, n) {
     return `https://wizzair.com/en-gb/booking/select-flight/${from}/${to}/${d}/null/1/0/0/null`;
   if (al === "BT")
     return `https://www.airbaltic.com/en/book-flight?originType=A&originCode=${from}&destinType=A&destinCode=${to}&tripType=oneway&departure=${d}&numAdt=1&numChd=0&numInf=0`;
-  return `https://www.google.com/travel/flights?q=${encodeURIComponent(`flights from ${from} to ${to} on ${d} one way`)}`;
+  // Kitos avialinijos (kainos iš Aviasales): Aviasales paieška tai dienai
+  return `https://www.aviasales.com/search/${from}${d.slice(8, 10)}${d.slice(5, 7)}${to}1`;
 }
 
 export function defaultSearch(DATA) {
@@ -77,7 +84,7 @@ export function createEngine(DATA) {
     const ck = JSON.stringify([S.origin, S.tr, S.outTime, S.backTime, S.airlines, lay]);
     if (cache.has(ck)) return cache.get(ck);
     const O = S.origin, out = {}, back = {};
-    const alOk = f => (!als || als.has(f[1])) && (S.tr || !f[5]);
+    const alOk = f => (!als || als.has(f[1]) || (als.has("*") && !OWN.has(f[1]))) && (S.tr || !f[5]);
     const connect = (store, key, legA, m2, from2, to2) => {
       const a1 = legArr(legA); if (a1 == null) return;
       const last = Math.floor((a1 + maxGap) / 1440);
