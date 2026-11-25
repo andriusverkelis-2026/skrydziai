@@ -1,6 +1,6 @@
 // Programėlės talpykla: visada bandome tinklą (kad matytum naujausias kainas),
 // o be ryšio rodome paskutinę išsaugotą versiją.
-const CACHE = "skrydziai-v17";
+const CACHE = "skrydziai-v18";
 const SHELL = ["./", "index.html", "engine.js", "crypto.js", "manifest.webmanifest", "icon.svg", "icon-192.png"];
 
 self.addEventListener("install", e => {

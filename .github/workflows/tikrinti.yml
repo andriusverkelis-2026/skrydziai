@@ -85,8 +85,6 @@ jobs:
         run: node collector/darbas.mjs planas
 
       - name: Rinkti kainas
-        env:
-          TRAVELPAYOUTS_TOKEN: ${{ secrets.TRAVELPAYOUTS_TOKEN }}
         run: |
           if [ "$VEIKSMAS" = "visi" ]; then
             python collector/rinkti_kainas.py --out build/kainos.json --oro-uostai data/oro_uostai.json

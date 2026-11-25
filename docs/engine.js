@@ -32,8 +32,7 @@ export function bookUrl(al, from, to, n) {
     return `https://www.norwegian.com/en/ipc/availability/avaday?D_City=${from}&A_City=${to}&TripType=1&D_Day=${d.slice(8, 10)}&D_Month=${d.slice(0, 4)}${d.slice(5, 7)}&AdultCount=1&CurrencyCode=EUR`;
   if (al === "BT")
     return `https://www.airbaltic.com/en/book-flight?originType=A&originCode=${from}&destinType=A&destinCode=${to}&tripType=oneway&departure=${d}&numAdt=1&numChd=0&numInf=0`;
-  // Kitos avialinijos (kainos iš Aviasales): Aviasales paieška tai dienai
-  return `https://www.aviasales.com/search/${from}${d.slice(8, 10)}${d.slice(5, 7)}${to}1`;
+  return `https://www.google.com/travel/flights?q=${encodeURIComponent(`flights from ${from} to ${to} on ${d} one way`)}`;
 }
 
 export function defaultSearch(DATA) {
