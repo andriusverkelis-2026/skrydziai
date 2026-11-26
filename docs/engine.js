@@ -15,9 +15,9 @@ export const AIRLINES = {
   SN: "Brussels Airlines", EW: "Eurowings", A3: "Aegean", PS: "UIA", EK: "Emirates", QR: "Qatar Airways",
   EY: "Etihad", FZ: "flydubai", PC: "Pegasus", XQ: "SunExpress", U2: "easyJet", VY: "Vueling", IB: "Iberia",
   TP: "TAP Air Portugal", AZ: "ITA Airways", HV: "Transavia", LS: "Jet2", G9: "Air Arabia", J2: "AZAL",
-  "*": "Kitos avialinijos",
+  "*": "Kitos avialinijos", NOV: "Novaturas",
 };
-export const OWN = new Set(["FR", "W6", "BT", "DY", "R", "W"]); // kainos tiesiai iš avialinijų svetainių
+export const OWN = new Set(["FR", "W6", "BT", "DY", "NOV", "R", "W"]); // kainos tiesiai iš avialinijų svetainių
 export const alName = c => AIRLINES[c] || c;
 
 export const DEFAULT_LAY = [3, 24]; // persėdimo laukimas, val. (nustatomas filtruose)
@@ -28,6 +28,8 @@ export function bookUrl(al, from, to, n) {
     return `https://www.ryanair.com/gb/en/trip/flights/select?adults=1&teens=0&children=0&infants=0&dateOut=${d}&dateIn=&isConnectedFlight=false&isReturn=false&discount=0&originIata=${from}&destinationIata=${to}`;
   if (al === "W6" || al === "W")
     return `https://wizzair.com/en-gb/booking/select-flight/${from}/${to}/${d}/null/1/0/0/null`;
+  if (al === "NOV")
+    return `https://flights.novatours.eu/g/${from}/${to}/${d.replaceAll("-", "")}`;
   if (al === "DY")
     return `https://www.norwegian.com/en/ipc/availability/avaday?D_City=${from}&A_City=${to}&TripType=1&D_Day=${d.slice(8, 10)}&D_Month=${d.slice(0, 4)}${d.slice(5, 7)}&AdultCount=1&CurrencyCode=EUR`;
   if (al === "BT")

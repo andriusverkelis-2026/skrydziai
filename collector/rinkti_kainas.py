@@ -121,7 +121,7 @@ def est_arrival(frm: str, to: str, hhmm: str) -> int | None:
 
 
 def get_json(session: requests.Session, method: str, url: str, *, tries: int = 4,
-             pause: float = 0.0, log: bool = True, **kw):
+             pause: float = 0.0, log: bool = True, raw: bool = False, **kw):
     """Grąžina JSON, None (maršruto/periodo nėra) arba FAIL (nepavyko po kelių bandymų)."""
     slow, err = 2, ""
     for i in range(tries):
@@ -133,7 +133,7 @@ def get_json(session: requests.Session, method: str, url: str, *, tries: int = 4
             err = str(e)
         else:
             if r.status_code == 200:
-                return r.json()
+                return r.text if raw else r.json()
             if r.status_code in (400, 404):
                 return None  # tokio maršruto / periodo nėra
             err = f"HTTP {r.status_code}"
@@ -482,13 +482,122 @@ class Norwegian:
         return True
 
 
+# ---------------------------------------------------------------- Novaturas (užsakomieji skrydžiai)
+class Novaturas:
+    """Novaturas skrydžiai be viešbučio (flights.novatours.eu, bendra LT/LV/EE sistema).
+    Savaitės kalendorius duoda kainą be oro uosto mokesčio kiekvienai dienai; pasirinktos dienos
+    bilietų klasės — laikus ir pilną kainą, iš kurių apskaičiuojamas mokestis."""
+    B = "https://flights.novatours.eu"
+    AL = "NOV"  # programėlėje rodoma kaip „Novaturas“ (vykdo Heston, airBaltic ir kt.)
+    OPT = re.compile(r'value="([ab]);([^;]+);([^;]+);([^;]*);([A-Z]{3});([A-Z]{3});([^;]*);[^;]*;[^;]*;([\d.]+);[^;]*;[^;]*;([\d.]+);')
+    DAY = re.compile(r'<div class="fl day flight d-([\d-]+)">.*?class="s18 price"[^>]*>([\d.]+)<', re.S)
+
+    def __init__(self, start: dt.date, end: dt.date):
+        self.s = requests.Session()
+        self.s.headers.update({**BASE_H, "Accept-Language": "lt-LT,en", "Referer": self.B + "/skrydziai/1"})
+        self.start, self.end = start, end
+        self.dests: dict[str, list[str]] = {}
+        self.fetched: set[tuple[str, str]] = set()
+        try:
+            self.s.get(self.B + "/", timeout=30)
+            # /g/ puslapis inicijuoja sesiją ir turi maršrutų sąrašą (var airports = {...})
+            # kelionės pirmyn ir atgal nuoroda — tada veikia ir grįžimo krypties kainos
+            d1, d2 = start + dt.timedelta(days=7), start + dt.timedelta(days=14)
+            html = self.s.get(f"{self.B}/g/VNO/HRG/{d1.strftime('%Y%m%d')}/{d2.strftime('%Y%m%d')}", timeout=30).text
+        except requests.RequestException:
+            html = ""
+        m = re.search(r"airports\s*=\s*\{(.*?)\};", html, re.S)
+        for line in (m.group(1).splitlines() if m else []):
+            o = re.match(r"\s*'([A-Z]{3})'\s*:\s*\{name:\s*'([^',]+)", line)
+            if o:
+                put_airport(o.group(1), o.group(2), "")
+                self.dests[o.group(1)] = re.findall(r"'([A-Z]{3})'\s*:\s*\{name", line.split("destinations", 1)[-1])
+        if not self.dests:
+            errors.append("Novaturas: nepavyko gauti maršrutų — Novaturas skrydžiai praleisti")
+            print("Novaturas: maršrutų sąrašas nepasiekiamas, praleidžiu")
+
+    def routes(self, origins: list[str], targets: list[str] | None = None) -> set[tuple[str, str]]:
+        return {pr for o in origins for t in self.dests.get(o, [])
+                if t not in origins and (targets is None or t in targets) for pr in ((o, t), (t, o))}
+
+    def _week(self, a: str, b: str, day: dt.date, kryptis: str = "a"):
+        d = get_json(self.s, "GET", self.B + "/ajax.php", params={
+            "callback": "cb", "komanda": "kalendorius-savaite", "lang": "1lt", "keleiviai": "1;0;0",
+            "kryptis": kryptis, "isvykimasVieta": a, "atvykimasVieta": b, "pazymetaData": str(day),
+            "nuoData": str(self.start) if kryptis == "b" else ""}, pause=0.7, log=False, raw=True)
+        if not d or d is FAIL or "(" not in d:
+            return None
+        try:
+            return json.loads(d[d.index("(") + 1:d.rindex(")")]).get("html") or ""
+        except ValueError:
+            return None
+
+    def fetch(self, pairs: set[tuple[str, str]], label: str = "Novaturas") -> None:
+        pairs = sorted(pairs - self.fetched)
+        self.fetched |= set(pairs)
+        if not pairs:
+            return
+        print(f"{label}: {len(pairs)} kryptys")
+        for a, b in pairs:  # nuosekliai — svetainė maža, sesija viena
+            self._pair(a, b)
+
+    def _pair(self, a: str, b: str) -> None:
+        fares_by_day: dict[str, float] = {}
+        times: dict[str, tuple[str, int]] = {}   # diena -> (išvykimas HH:MM, atvykimas min.)
+        by_wd: dict[int, tuple[str, int]] = {}   # savaitės diena -> laikai
+        tax = None
+
+        def opts(html: str):
+            nonlocal tax
+            for _, dep, arr, _fn, frm, to, _al, fare, total in self.OPT.findall(html):
+                if frm != a or to != b or len(dep) < 16:
+                    continue
+                day = dep[:10]
+                arr_min = (dt.date.fromisoformat(arr[:10]) - dt.date.fromisoformat(day)).days * 1440 \
+                    + int(arr[11:13]) * 60 + int(arr[14:16])
+                times[day] = (dep[11:16], arr_min)
+                by_wd[dt.date.fromisoformat(day).weekday()] = (dep[11:16], arr_min)
+                t = round(float(total) - float(fare), 2)
+                if t >= 0 and (tax is None or t < tax):
+                    tax = t
+
+        d = self.start + dt.timedelta(days=3)
+        while d - dt.timedelta(days=3) <= self.end:
+            html = self._week(a, b, d)
+            if html is None:
+                return
+            for day, price in self.DAY.findall(html):
+                fares_by_day[day] = float(price)
+            opts(html)
+            d += dt.timedelta(days=7)
+        if not fares_by_day:
+            return
+        # Laikai matosi tik savaitės centrinei dienai: kiekvienai skraidymo savaitės dienai be laiko —
+        # po vieną užklausą, centruotą į tos savaitės dienos skrydį (grįžimo kryptį bandom ir su kryptis=b)
+        for wd in sorted({dt.date.fromisoformat(x).weekday() for x in fares_by_day} - set(by_wd)):
+            day = min(x for x in fares_by_day if dt.date.fromisoformat(x).weekday() == wd)
+            for kr in ("a", "b"):
+                html = self._week(a, b, dt.date.fromisoformat(day), kr)
+                if html:
+                    opts(html)
+                if wd in by_wd:
+                    break
+        for day, fare in fares_by_day.items():
+            if not (str(self.start) <= day <= str(self.end)):
+                continue
+            t = times.get(day) or by_wd.get(dt.date.fromisoformat(day).weekday())
+            put_fare(a, b, day, fare + (tax or 0), self.AL, t[0] if t else "", t[1] if t else None,
+                     0 if day in times else 1)
+
+
 # ---------------------------------------------------------------- tikslinė paieška
 # Kaunas Wizz žemėlapyje turi Vilniaus jungtis (užklausos grąžina VNO skrydžius) — Wizz jam praleidžiame
 WIZZ_SKIP = {"KUN"}
 
 
 def tikslinis(plan: dict, origins: list[str], ry: "Ryanair | None", wz: "Wizz | None",
-              ab: "AirBaltic | None" = None, dy: "Norwegian | None" = None) -> None:
+              ab: "AirBaltic | None" = None, dy: "Norwegian | None" = None,
+              nv: "Novaturas | None" = None) -> None:
     """Kainos tik į nurodytas kryptis (plan["targets"]): tiesiogiai ir per VISUS persėdimo miestus,
     į kuriuos skrendama iš išvykimo oro uostų ir iš kurių skrendama į tikslą. Plius sekami skrydžiai."""
     targets = [t.upper() for t in plan.get("targets", [])]
@@ -538,6 +647,8 @@ def tikslinis(plan: dict, origins: list[str], ry: "Ryanair | None", wz: "Wizz | 
             ab.fetch(ab.routes(origins, targets))
         if dy:
             dy.fetch(dy.routes(origins, targets))
+        if nv:
+            nv.fetch(nv.routes(origins, targets))
 
     # Sekami skrydžiai: tik konkretūs maršrutai ir mėnesiai / dienos
     tracked = plan.get("tracked", [])
@@ -560,11 +671,15 @@ def tikslinis(plan: dict, origins: list[str], ry: "Ryanair | None", wz: "Wizz | 
         if dy and dy_pairs:
             dy.end = max(dy.end, max(dt.date.fromisoformat(l["date"]) for l in tracked))
             dy.fetch(dy_pairs, "Norwegian sekami")
+        nv_pairs = {(l["from"], l["to"]) for l in tracked if l.get("al") == "NOV"}
+        if nv and nv_pairs:
+            nv.end = max(nv.end, max(dt.date.fromisoformat(l["date"]) for l in tracked))
+            nv.fetch(nv_pairs, "Novaturas sekami")
 
 
 
 def oro_uostai(ry: "Ryanair | None", wz: "Wizz | None", origins: list[str],
-               ab: "AirBaltic | None" = None) -> list[dict]:
+               ab: "AirBaltic | None" = None, nv: "Novaturas | None" = None) -> list[dict]:
     """Visi Ryanair ir Wizz oro uostai krypčių langui programėlėje:
     k — kodas, n — pavadinimas, c — šalis, w — šilta kryptis, a — avialinijos,
     d — iš kurių išvykimo oro uostų skrendama tiesiogiai."""
@@ -604,6 +719,15 @@ def oro_uostai(ry: "Ryanair | None", wz: "Wizz | None", origins: list[str],
                 e = add(code, a.get("n") or code, a.get("c") or "", "BT")
                 if direct and o not in e["d"]:
                     e["d"].append(o)
+    if nv:
+        for o in origins:
+            for code in nv.dests.get(o, []):
+                a = airports.get(code, {})
+                e = out.get(code) or add(code, a.get("n") or code, a.get("c") or "", "NOV")
+                if "NOV" not in e["a"]:
+                    e["a"].append("NOV")
+                if o not in e["d"]:
+                    e["d"].append(o)
     for o in origins:
         out.pop(o, None)
     return sorted(out.values(), key=lambda x: (x["c"], x["n"]))
@@ -623,6 +747,7 @@ def main() -> None:
     ap.add_argument("--be-wizz", action="store_true")
     ap.add_argument("--be-airbaltic", action="store_true")
     ap.add_argument("--be-norwegian", action="store_true")
+    ap.add_argument("--be-novaturas", action="store_true")
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT, help="kur įrašyti JSON")
     args = ap.parse_args()
 
@@ -646,11 +771,12 @@ def main() -> None:
     wz = None if args.be_wizz else Wizz(start, fetch_end)
     ab = None if args.be_airbaltic else AirBaltic(start, fetch_end)
     dy = None if args.be_norwegian else Norwegian(start, fetch_end)
+    nv = None if args.be_novaturas else Novaturas(start, fetch_end)
 
     if args.tik_oro_uostai:
         pass
     elif plan:
-        tikslinis(plan, origins, ry, wz, ab, dy)
+        tikslinis(plan, origins, ry, wz, ab, dy, nv)
     else:
         # 1. Tiesioginiai skrydžiai iš (ir atgal į) išvykimo oro uostus
         if ry:
@@ -661,6 +787,8 @@ def main() -> None:
             ab.fetch(ab.routes(origins), "airBaltic")
         if dy:
             dy.fetch(dy.routes(origins), "Norwegian")
+        if nv:
+            nv.fetch(nv.routes(origins), "Novaturas")
         # 2. Persėdimai: iš didžiųjų miestų — į visas kryptis, iš kitų — į šiltas
         if not args.be_persedimu:
             hubs = {b for (a, b), v in fares.items()
@@ -675,7 +803,7 @@ def main() -> None:
 
     if args.oro_uostai:
         args.oro_uostai.parent.mkdir(parents=True, exist_ok=True)
-        args.oro_uostai.write_text(json.dumps(oro_uostai(ry, wz, sorted(set(DEFAULT_ORIGINS) | set(origins)), ab), ensure_ascii=False, separators=(",", ":")),
+        args.oro_uostai.write_text(json.dumps(oro_uostai(ry, wz, sorted(set(DEFAULT_ORIGINS) | set(origins)), ab, nv), ensure_ascii=False, separators=(",", ":")),
                                    encoding="utf-8")
 
     if args.tik_oro_uostai:
